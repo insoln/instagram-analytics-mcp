@@ -31,20 +31,23 @@ const GRAPH_API_BASE_URL = 'https://graph.facebook.com';
 const DEFAULT_API_VERSION = 'v22.0';
 const DEFAULT_POST_FIELDS = 'message,created_time,permalink_url';
 
+// Metrics verified against Graph API v22+ with read_insights permission.
+// The following were deprecated by Meta and no longer accepted:
+// page_impressions, page_engaged_users, page_fans, page_fan_adds_unique.
 const KNOWN_PAGE_METRICS: KnownMetric[] = [
-  { name: 'page_impressions', periods: ['day', 'week', 'days_28'] },
   { name: 'page_impressions_unique', periods: ['day', 'week', 'days_28'] },
-  { name: 'page_engaged_users', periods: ['day', 'week', 'days_28'] },
-  { name: 'page_post_engagements', periods: ['day', 'week', 'days_28'] },
   { name: 'page_views_total', periods: ['day', 'week', 'days_28'] },
-  { name: 'page_fans', periods: ['day', 'week', 'days_28', 'lifetime'] },
-  { name: 'page_fan_adds_unique', periods: ['day', 'week', 'days_28', 'lifetime'], notes: 'Requires period when not lifetime' },
+  { name: 'page_post_engagements', periods: ['day', 'week', 'days_28'] },
+  { name: 'page_actions_post_reactions_total', periods: ['day', 'week', 'days_28'] },
+  { name: 'page_video_views', periods: ['day', 'week', 'days_28'], notes: 'Only available for pages with video content' },
 ];
 
 const KNOWN_POST_METRICS: KnownMetric[] = [
-  { name: 'post_impressions', periods: ['day', 'week', 'days_28'] },
-  { name: 'post_impressions_unique', periods: ['day', 'week', 'days_28'] },
-  { name: 'post_engaged_users', periods: ['day', 'week', 'days_28'] },
+  { name: 'post_impressions', periods: ['lifetime'] },
+  { name: 'post_impressions_unique', periods: ['lifetime'] },
+  { name: 'post_engaged_users', periods: ['lifetime'] },
+  { name: 'post_clicks', periods: ['lifetime'] },
+  { name: 'post_reactions_by_type_total', periods: ['lifetime'] },
 ];
 
 const PAGE_TOKEN_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
