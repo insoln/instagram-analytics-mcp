@@ -38,6 +38,7 @@ export async function resolveContext(
     return { instagramClient: null, facebookClient: null };
   }
 
+  // auth.clientId is the JWT `sub` claim, which we set to the session subject ("ig_<userId>").
   const session = await store.getSession(auth.clientId);
   if (!session) {
     return { instagramClient: null, facebookClient: null };

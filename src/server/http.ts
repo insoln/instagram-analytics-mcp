@@ -146,8 +146,10 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
         return;
       }
 
-      const serverUrl = cfg.serverUrl ?? `http://${cfg.host}:${cfg.port}`;
-      const allowedHost = new URL(serverUrl).hostname;
+      const serverUrl = cfg.serverUrl ?? `http://localhost:${cfg.port}`;
+      const parsedHost = new URL(serverUrl).hostname;
+      // '0.0.0.0' is a listen address, not a valid Host header value.
+      const allowedHost = parsedHost === '0.0.0.0' ? 'localhost' : parsedHost;
       const authInfo: AuthInfo | undefined = req.auth;
 
       const transport = new StreamableHTTPServerTransport({
