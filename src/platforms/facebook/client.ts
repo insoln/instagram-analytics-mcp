@@ -4,6 +4,7 @@
  */
 
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import { createHash } from 'node:crypto';
 import { requestWithRetry } from '../../utils/retry.js';
 import { FacebookApiError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
@@ -46,9 +47,20 @@ const KNOWN_POST_METRICS: KnownMetric[] = [
   { name: 'post_engaged_users', periods: ['day', 'week', 'days_28'] },
 ];
 
+const PAGE_TOKEN_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const PAGE_TOKEN_CACHE_MAX = 500;
+
+interface PageTokenEntry {
+  token: string;
+  expiresAt: number;
+}
+
 export class FacebookClient {
   private readonly axiosInstance: AxiosInstance;
   private readonly config: FacebookConfig;
+  // Keyed by hash(pageId + userToken) to avoid storing raw tokens as Map keys.
+  // TTL-bounded (1h) and capped at 500 entries to prevent unbounded growth.
+  private readonly pageTokenCache = new Map<string, PageTokenEntry>();
 
   constructor(config: FacebookConfig) {
     this.config = config;
@@ -59,6 +71,70 @@ export class FacebookClient {
     logger.debug('Facebook client initialized', {
       apiVersion: config.defaultApiVersion || DEFAULT_API_VERSION,
     });
+  }
+
+  // Fetches and caches a Page Access Token for the given page.
+  // Page-level API endpoints (insights, posts) reject User Access Tokens.
+  // On OAuth errors the cache entry is cleared and the fetch is retried once
+  // to handle token rotation/revocation without requiring a restart.
+  private async resolvePageToken(pageId: string, userToken: string, apiVersion: string): Promise<string> {
+    const cacheKey = createHash('sha256').update(`${pageId}:${userToken}`).digest('hex').slice(0, 32);
+    const cached = this.pageTokenCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) return cached.token;
+
+    const token = await this.fetchPageToken(pageId, userToken, apiVersion);
+
+    // Evict oldest entry if at capacity before inserting
+    if (this.pageTokenCache.size >= PAGE_TOKEN_CACHE_MAX) {
+      this.pageTokenCache.delete(this.pageTokenCache.keys().next().value!);
+    }
+    this.pageTokenCache.set(cacheKey, { token, expiresAt: Date.now() + PAGE_TOKEN_CACHE_TTL_MS });
+    return token;
+  }
+
+  private async fetchPageToken(pageId: string, userToken: string, apiVersion: string): Promise<string> {
+    const data = await this.request<{ access_token?: string; id?: string }>({
+      method: 'GET',
+      url: this.buildPath(apiVersion, pageId),
+      params: { fields: 'access_token', access_token: userToken },
+    });
+
+    if (!data.access_token) {
+      throw new FacebookApiError({
+        code: 'OAUTH',
+        message: `Could not retrieve Page Access Token for page ${pageId}`,
+        raw: { pageId, fields: 'access_token', response: data },
+      });
+    }
+    return data.access_token;
+  }
+
+  private invalidatePageToken(pageId: string, userToken: string): void {
+    const cacheKey = createHash('sha256').update(`${pageId}:${userToken}`).digest('hex').slice(0, 32);
+    this.pageTokenCache.delete(cacheKey);
+  }
+
+  // Resolves a page token, runs fn, and retries once with a fresh token if an
+  // OAUTH error occurs (handles token rotation/revocation without a restart).
+  private async withPageToken<T>(
+    pageId: string,
+    userToken: string,
+    apiVersion: string,
+    fn: (pageToken: string) => Promise<T>
+  ): Promise<T> {
+    const pageToken = await this.resolvePageToken(pageId, userToken, apiVersion);
+    try {
+      return await fn(pageToken);
+    } catch (err) {
+      if (err instanceof FacebookApiError && err.normalized.code === 'OAUTH') {
+        this.invalidatePageToken(pageId, userToken);
+        const freshToken = await this.fetchPageToken(pageId, userToken, apiVersion);
+        const cacheKey = createHash('sha256').update(`${pageId}:${userToken}`).digest('hex').slice(0, 32);
+        this.pageTokenCache.set(cacheKey, { token: freshToken, expiresAt: Date.now() + PAGE_TOKEN_CACHE_TTL_MS });
+        return fn(freshToken);
+      }
+      throw err;
+    }
   }
 
   async getPageInsights(params: PageInsightsParams): Promise<PageInsightsResult> {
@@ -72,41 +148,36 @@ export class FacebookClient {
     }
 
     const apiVersion = this.resolveApiVersion(params.apiVersion);
-    const accessToken = this.resolveAccessToken(params.accessToken);
+    const userToken = this.resolveAccessToken(params.accessToken);
 
-    const query: Record<string, string> = {
-      metric: params.metrics.join(','),
-      access_token: accessToken,
-    };
+    return this.withPageToken(pageId, userToken, apiVersion, async (accessToken) => {
+      const query: Record<string, string> = {
+        metric: params.metrics.join(','),
+        access_token: accessToken,
+      };
 
-    if (params.period) query.period = params.period;
-    if (params.since) query.since = params.since;
-    if (params.until) query.until = params.until;
-    if (typeof params.limit === 'number') query.limit = String(params.limit);
-    if (params.after) query.after = params.after;
-    if (params.before) query.before = params.before;
+      if (params.period) query.period = params.period;
+      if (params.since) query.since = params.since;
+      if (params.until) query.until = params.until;
+      if (typeof params.limit === 'number') query.limit = String(params.limit);
+      if (params.after) query.after = params.after;
+      if (params.before) query.before = params.before;
 
-    const data = await this.request<InsightsResponse>({
-      method: 'GET',
-      url: this.buildPath(apiVersion, `${pageId}/insights`),
-      params: query,
+      const data = await this.request<InsightsResponse>({
+        method: 'GET',
+        url: this.buildPath(apiVersion, `${pageId}/insights`),
+        params: query,
+      });
+
+      const warnings: string[] = [];
+      if (!params.period) {
+        warnings.push('No period provided. Some metrics may require a period parameter.');
+      }
+
+      const result: PageInsightsResult = { data: data.data, paging: data.paging };
+      if (warnings.length > 0) result.warnings = warnings;
+      return result;
     });
-
-    const warnings: string[] = [];
-    if (!params.period) {
-      warnings.push('No period provided. Some metrics may require a period parameter.');
-    }
-
-    const result: PageInsightsResult = {
-      data: data.data,
-      paging: data.paging,
-    };
-
-    if (warnings.length > 0) {
-      result.warnings = warnings;
-    }
-
-    return result;
   }
 
   async getPostInsights(params: PostInsightsParams): Promise<InsightsResponse> {
@@ -119,19 +190,27 @@ export class FacebookClient {
     }
 
     const apiVersion = this.resolveApiVersion(params.apiVersion);
-    const accessToken = this.resolveAccessToken(params.accessToken);
+    const userToken = this.resolveAccessToken(params.accessToken);
+    // Post IDs are in format pageId_postId — extract pageId to get the page token.
+    const derivedPageId = params.postId.includes('_')
+      ? params.postId.split('_')[0]
+      : this.config.pageId;
+    if (!derivedPageId) {
+      throw new FacebookApiError({ code: 'VALIDATION', message: 'Cannot determine page_id from post_id. Provide FACEBOOK_PAGE_ID or use a post_id in pageId_postId format.', raw: null });
+    }
+    return this.withPageToken(derivedPageId, userToken, apiVersion, async (accessToken) => {
+      const query: Record<string, string> = {
+        metric: params.metrics.join(','),
+        access_token: accessToken,
+      };
 
-    const query: Record<string, string> = {
-      metric: params.metrics.join(','),
-      access_token: accessToken,
-    };
+      if (params.period) query.period = params.period;
 
-    if (params.period) query.period = params.period;
-
-    return this.request<InsightsResponse>({
-      method: 'GET',
-      url: this.buildPath(apiVersion, `${params.postId}/insights`),
-      params: query,
+      return this.request<InsightsResponse>({
+        method: 'GET',
+        url: this.buildPath(apiVersion, `${params.postId}/insights`),
+        params: query,
+      });
     });
   }
 
@@ -146,23 +225,23 @@ export class FacebookClient {
     }
 
     const apiVersion = this.resolveApiVersion(params.apiVersion);
-    const accessToken = this.resolveAccessToken(params.accessToken);
+    const userToken = this.resolveAccessToken(params.accessToken);
 
-    const fields = `${DEFAULT_POST_FIELDS},insights.metric(${params.postMetrics.join(',')})`;
+    return this.withPageToken(pageId, userToken, apiVersion, async (accessToken) => {
+      const fields = `${DEFAULT_POST_FIELDS},insights.metric(${params.postMetrics.join(',')})`;
+      const query: Record<string, string> = {
+        fields,
+        access_token: accessToken,
+        limit: String(params.limit ?? 25),
+      };
+      if (params.after) query.after = params.after;
+      if (params.before) query.before = params.before;
 
-    const query: Record<string, string> = {
-      fields,
-      access_token: accessToken,
-      limit: String(params.limit ?? 25),
-    };
-
-    if (params.after) query.after = params.after;
-    if (params.before) query.before = params.before;
-
-    return this.request<PostsWithInsightsResponse>({
-      method: 'GET',
-      url: this.buildPath(apiVersion, `${pageId}/posts`),
-      params: query,
+      return this.request<PostsWithInsightsResponse>({
+        method: 'GET',
+        url: this.buildPath(apiVersion, `${pageId}/posts`),
+        params: query,
+      });
     });
   }
 
@@ -267,7 +346,7 @@ export class FacebookClient {
   private resolveAccessToken(token?: string) {
     const resolved = token || this.config.accessToken;
     if (!resolved) {
-      throw new FacebookApiError({ code: 'OAUTH', message: 'Facebook Page access token is required', raw: null });
+      throw new FacebookApiError({ code: 'OAUTH', message: 'Facebook access token is required. Provide FACEBOOK_ACCESS_TOKEN or pass accessToken in the request.', raw: null });
     }
     return resolved;
   }
