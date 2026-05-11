@@ -2,7 +2,10 @@
 
 /**
  * Social Analytics MCP Server
- * Unified server supporting Instagram and Facebook analytics
+ * Supports three modes via MCP_MODE env var:
+ *   stdio-static (default) — stdin/stdout transport, token from env
+ *   http-static            — HTTP transport, token from env
+ *   http-oauth             — HTTP transport, Meta OAuth 2.1 multi-tenant
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -13,7 +16,7 @@ import {
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import dotenv from 'dotenv';
+import { config } from './config.js';
 import { InstagramClient } from './platforms/instagram/client.js';
 import { FacebookClient } from './platforms/facebook/client.js';
 import { getAllTools } from './tools.js';
@@ -21,86 +24,59 @@ import { PROMPTS, getPromptContent } from './prompts.js';
 import { handleInstagramTool, handleFacebookTool } from './handlers.js';
 import { logger } from './utils/logger.js';
 
-// Load environment variables
-dotenv.config();
+// Re-export public API for programmatic usage
+export { InstagramClient, FacebookClient };
+export { getAllTools } from './tools.js';
+export { PROMPTS, getPromptContent } from './prompts.js';
+export { handleInstagramTool, handleFacebookTool } from './handlers.js';
+export type { InstagramConfig } from './platforms/instagram/types.js';
+export type { FacebookConfig } from './platforms/facebook/types.js';
 
-// Package version kept in sync
 const VERSION = '3.0.0';
 
-// Initialize clients
-const instagramClient = process.env.INSTAGRAM_ACCESS_TOKEN
-  ? new InstagramClient({
-      accessToken: process.env.INSTAGRAM_ACCESS_TOKEN,
-      accountId: process.env.INSTAGRAM_ACCOUNT_ID,
-      apiVersion: process.env.INSTAGRAM_API_VERSION,
-    })
-  : null;
+async function runStdioStatic(): Promise<void> {
+  const instagramClient = config.instagramAccessToken
+    ? new InstagramClient({
+        accessToken: config.instagramAccessToken,
+        accountId: config.instagramAccountId,
+        apiVersion: config.instagramApiVersion,
+      })
+    : null;
 
-const facebookClient = process.env.FACEBOOK_ACCESS_TOKEN
-  ? new FacebookClient({
-      accessToken: process.env.FACEBOOK_ACCESS_TOKEN,
-      pageId: process.env.FACEBOOK_PAGE_ID,
-      defaultApiVersion: process.env.FACEBOOK_API_VERSION,
-    })
-  : null;
+  const facebookClient = config.facebookAccessToken
+    ? new FacebookClient({
+        accessToken: config.facebookAccessToken,
+        pageId: config.facebookPageId,
+        defaultApiVersion: config.facebookApiVersion,
+      })
+    : null;
 
-/**
- * Create and configure the MCP server
- */
-export function createServer() {
   const server = new Server(
-    {
-      name: 'social-analytics-mcp',
-      version: VERSION,
-    },
-    {
-      capabilities: {
-        tools: {},
-        prompts: {},
-      },
-    }
+    { name: 'social-analytics-mcp', version: VERSION },
+    { capabilities: { tools: {}, prompts: {} } }
   );
 
-  // Helper to format success responses
-  function formatSuccess(data: unknown) {
-    return {
-      content: [
-        {
-          type: 'text' as const,
-          text: JSON.stringify(data, null, 2),
-        },
-      ],
-    };
-  }
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: getAllTools() }));
+  server.setRequestHandler(ListPromptsRequestSchema, async () => ({ prompts: PROMPTS }));
 
-  // Helper to format error responses
-  function formatError(error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      content: [
-        {
-          type: 'text' as const,
-          text: JSON.stringify({ error: message }, null, 2),
-        },
-      ],
-      isError: true,
-    };
-  }
-
-  // Register list tools handler
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
-      tools: getAllTools(),
-    };
+  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    return getPromptContent(name, (args ?? {}) as Record<string, string>);
   });
 
-  // Register call tool handler
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
+    const formatSuccess = (data: unknown) => ({
+      content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
+    });
+    const formatError = (error: unknown) => ({
+      content: [{ type: 'text' as const, text: JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2) }],
+      isError: true,
+    });
+
     try {
       let result: unknown;
-
       if (name.startsWith('instagram_')) {
         result = await handleInstagramTool(name, (args ?? {}) as Record<string, unknown>, instagramClient);
       } else if (name.startsWith('facebook_')) {
@@ -108,55 +84,46 @@ export function createServer() {
       } else {
         throw new Error(`Unknown tool: ${name}`);
       }
-
       return formatSuccess(result);
     } catch (error) {
       return formatError(error);
     }
   });
 
-  // Register list prompts handler
-  server.setRequestHandler(ListPromptsRequestSchema, async () => {
-    return {
-      prompts: PROMPTS,
-    };
+  const transport = new StdioServerTransport();
+
+  logger.info(`Social Analytics MCP Server v${VERSION} starting (stdio-static)`, {
+    instagram: !!instagramClient,
+    facebook: !!facebookClient,
   });
 
-  // Register get prompt handler
-  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params;
-
-    try {
-      const promptContent = getPromptContent(name, (args ?? {}) as Record<string, string>);
-      return promptContent;
-    } catch (error) {
-      throw new Error(`Failed to get prompt: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  });
-
-  return server;
+  await server.connect(transport);
 }
 
-// Create server instance
-const server = createServer();
+async function runHttpServer(): Promise<void> {
+  const { MemorySessionStore } = await import('./session/memory-store.js');
+  const { startHttpServer } = await import('./server/http.js');
 
-// Export for programmatic usage
-export { server, InstagramClient, FacebookClient };
-export { getAllTools } from './tools.js';
-export { PROMPTS, getPromptContent } from './prompts.js';
-export { handleInstagramTool, handleFacebookTool } from './handlers.js';
-export type { InstagramConfig } from './platforms/instagram/types.js';
-export type { FacebookConfig } from './platforms/facebook/types.js';
+  const store = new MemorySessionStore();
 
-// Start server when run directly
-const transport = new StdioServerTransport();
+  logger.info(`Social Analytics MCP Server v${VERSION} starting (${config.mode})`, {
+    port: config.port,
+    host: config.host,
+  });
 
-logger.info(`Social Analytics MCP Server v${VERSION} starting...`, {
-  instagram: !!instagramClient,
-  facebook: !!facebookClient,
-});
+  await startHttpServer(config, store);
+}
 
-server.connect(transport).catch((error) => {
-  logger.error('Failed to start server', error);
-  process.exit(1);
-});
+// Entry point
+(async () => {
+  try {
+    if (config.mode === 'stdio-static') {
+      await runStdioStatic();
+    } else {
+      await runHttpServer();
+    }
+  } catch (error) {
+    logger.error('Failed to start server', error);
+    process.exit(1);
+  }
+})();
