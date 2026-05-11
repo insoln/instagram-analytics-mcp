@@ -5,6 +5,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
+import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import type { Config } from '../config.js';
 import type { SessionStore } from '../session/store.js';
 import { MetaOAuthProvider } from '../auth/provider.js';
@@ -26,6 +27,7 @@ const VERSION = '3.0.0';
 interface TransportEntry {
   transport: StreamableHTTPServerTransport;
   server: Server;
+  authInfo: AuthInfo | undefined;
 }
 
 export async function startHttpServer(cfg: Config, store: SessionStore): Promise<void> {
@@ -60,7 +62,6 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       })
     );
 
-    // Meta OAuth callback (unprotected — this is the redirect target from Meta)
     app.get(cfg.metaCallbackPath, async (req: Request, res: Response) => {
       const { code, state, error, error_description } = req.query as Record<string, string>;
 
@@ -84,16 +85,17 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       }
     });
 
-    // JWKS endpoint for JWT verification by external parties
     app.get('/.well-known/jwks.json', (_req: Request, res: Response) => {
       res.json(getJwks());
     });
   }
 
-  // MCP transport sessions: mcp-session-id → { transport, server }
   const sessions = new Map<string, TransportEntry>();
 
-  function buildMcpServer(): Server {
+  // authInfo is captured at session creation time (from the initialize request)
+  // and stored in the session entry so all subsequent requests in the same
+  // session use the same identity without touching private transport internals.
+  function buildMcpServer(authInfo: AuthInfo | undefined): Server {
     const server = new Server({ name: 'social-analytics-mcp', version: VERSION }, { capabilities: { tools: {}, prompts: {} } });
 
     server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: getAllTools() }));
@@ -104,10 +106,8 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       return getPromptContent(name, (args ?? {}) as Record<string, string>);
     });
 
-    server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+    server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
-      // auth is attached to the extra by requireBearerAuth via request context
-      const auth = (extra as Record<string, unknown>)?.auth as ReturnType<typeof requireBearerAuth> | undefined;
 
       const formatSuccess = (data: unknown) => ({
         content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }],
@@ -118,7 +118,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       });
 
       try {
-        const ctx = await resolveContext(auth as any, cfg, store);
+        const ctx = await resolveContext(authInfo, cfg, store);
         let result: unknown;
         if (name.startsWith('instagram_')) {
           result = await handleInstagramTool(name, (args ?? {}) as Record<string, unknown>, ctx.instagramClient);
@@ -136,7 +136,6 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     return server;
   }
 
-  // MCP endpoint handler (shared by GET, POST, DELETE)
   async function handleMcp(req: Request, res: Response): Promise<void> {
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
     let entry = sessionId ? sessions.get(sessionId) : undefined;
@@ -149,11 +148,12 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
 
       const serverUrl = cfg.serverUrl ?? `http://${cfg.host}:${cfg.port}`;
       const allowedHost = new URL(serverUrl).hostname;
+      const authInfo: AuthInfo | undefined = req.auth;
 
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
-          sessions.set(id, { transport, server });
+          sessions.set(id, { transport, server, authInfo });
           logger.debug('MCP session initialized', { sessionId: id });
         },
         onsessionclosed: (id) => {
@@ -164,28 +164,20 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
         allowedHosts: [allowedHost, 'localhost', '127.0.0.1'],
       });
 
-      const server = buildMcpServer();
-
-      // Attach auth info to MCP extra for use in request handlers
-      if (req.auth) {
-        (transport as any)._authInfo = req.auth;
-      }
-
-      entry = { transport, server };
+      const server = buildMcpServer(authInfo);
+      entry = { transport, server, authInfo };
       await server.connect(transport);
     }
 
     await entry.transport.handleRequest(req, res, req.body);
   }
 
-  // Apply auth middleware to MCP endpoint in oauth mode
-  const resourceMetadataUrl = cfg.mode === 'http-oauth' ? `${cfg.serverUrl}/.well-known/oauth-protected-resource` : undefined;
+  const resourceMetadataUrl = cfg.mode === 'http-oauth'
+    ? `${cfg.serverUrl}/.well-known/oauth-protected-resource`
+    : undefined;
 
   if (cfg.mode === 'http-oauth' && provider) {
-    const bearerMiddleware = requireBearerAuth({
-      verifier: provider,
-      resourceMetadataUrl,
-    });
+    const bearerMiddleware = requireBearerAuth({ verifier: provider, resourceMetadataUrl });
     app.post('/mcp', bearerMiddleware, handleMcp);
     app.get('/mcp', bearerMiddleware, handleMcp);
     app.delete('/mcp', bearerMiddleware, handleMcp);
@@ -204,11 +196,9 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     app.delete('/mcp', staticMiddleware, handleMcp);
   }
 
-  // Health endpoints
   app.get('/healthz', (_req: Request, res: Response) => res.json({ status: 'ok' }));
   app.get('/readyz', (_req: Request, res: Response) => res.json({ status: 'ok' }));
 
-  // Generic error handler
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     logger.error('Unhandled HTTP error', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -222,14 +212,12 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     });
   });
 
-  // Graceful shutdown
   function shutdown() {
     logger.info('Shutting down HTTP server...');
     httpServer.close(() => {
       logger.info('HTTP server closed');
       process.exit(0);
     });
-    // Force exit after 10s
     setTimeout(() => process.exit(1), 10_000);
   }
 

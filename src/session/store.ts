@@ -16,8 +16,8 @@ export interface SessionStore {
   setMcpCode(code: string, record: McpCodeRecord): Promise<void>;
   deleteMcpCode(code: string): Promise<void>;
 
-  // Refresh tokens: opaque string → subject (long-lived, rotated on use)
-  getRefreshToken(token: string): Promise<string | undefined>;
-  setRefreshToken(token: string, subject: string, expiresAt: number): Promise<void>;
+  // Refresh tokens: opaque string → {subject, clientId} (long-lived, rotated on use)
+  getRefreshToken(token: string): Promise<{ subject: string; clientId: string } | undefined>;
+  setRefreshToken(token: string, subject: string, clientId: string, expiresAt: number): Promise<void>;
   deleteRefreshToken(token: string): Promise<void>;
 }

@@ -10,6 +10,7 @@ export interface OAuthStateRecord {
   codeChallenge: string;
   redirectUri: string;
   clientId: string;
+  scopes: string[];
   resource?: string;
   clientState?: string;
   expiresAt: number; // Unix ms
@@ -20,6 +21,7 @@ export interface McpCodeRecord {
   subject: string;
   codeChallenge: string;
   clientId: string;
+  scopes: string[];
   resource?: string;
   expiresAt: number; // Unix ms
 }

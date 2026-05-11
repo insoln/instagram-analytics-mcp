@@ -3,6 +3,7 @@ import type { McpCodeRecord, OAuthStateRecord, SessionRecord } from './types.js'
 
 interface RefreshRecord {
   subject: string;
+  clientId: string;
   expiresAt: number;
 }
 
@@ -60,18 +61,18 @@ export class MemorySessionStore implements SessionStore {
     this.mcpCodes.delete(code);
   }
 
-  async getRefreshToken(token: string): Promise<string | undefined> {
+  async getRefreshToken(token: string): Promise<{ subject: string; clientId: string } | undefined> {
     const record = this.refreshTokens.get(token);
     if (!record) return undefined;
     if (Date.now() > record.expiresAt) {
       this.refreshTokens.delete(token);
       return undefined;
     }
-    return record.subject;
+    return { subject: record.subject, clientId: record.clientId };
   }
 
-  async setRefreshToken(token: string, subject: string, expiresAt: number): Promise<void> {
-    this.refreshTokens.set(token, { subject, expiresAt });
+  async setRefreshToken(token: string, subject: string, clientId: string, expiresAt: number): Promise<void> {
+    this.refreshTokens.set(token, { subject, clientId, expiresAt });
   }
 
   async deleteRefreshToken(token: string): Promise<void> {

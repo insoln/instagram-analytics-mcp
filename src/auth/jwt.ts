@@ -10,13 +10,21 @@ let keyId: string;
 
 export async function initJwtKeys(privateKeyJwkJson?: string): Promise<void> {
   if (privateKeyJwkJson) {
-    const parsed = JSON.parse(privateKeyJwkJson) as Record<string, unknown>;
-    privateKey = (await importJWK(parsed, 'ES256')) as CryptoKey;
-    // Derive public key by stripping private fields
-    const { d: _d, ...pubJwk } = parsed;
-    publicKey = (await importJWK(pubJwk, 'ES256')) as CryptoKey;
-    keyId = (parsed.kid as string) ?? randomUUID();
-    publicKeyJwk = { ...pubJwk, kid: keyId };
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(privateKeyJwkJson) as Record<string, unknown>;
+    } catch {
+      throw new Error('JWT_PRIVATE_KEY_JWK contains invalid JSON. Expected an EC P-256 private key in JWK format.');
+    }
+    try {
+      privateKey = (await importJWK(parsed, 'ES256')) as CryptoKey;
+      const { d: _d, ...pubJwk } = parsed;
+      publicKey = (await importJWK(pubJwk, 'ES256')) as CryptoKey;
+      keyId = (parsed.kid as string) ?? randomUUID();
+      publicKeyJwk = { ...pubJwk, kid: keyId };
+    } catch {
+      throw new Error('JWT_PRIVATE_KEY_JWK is not a valid EC P-256 private key JWK.');
+    }
     logger.info('JWT: loaded key from JWT_PRIVATE_KEY_JWK');
   } else {
     const pair = await generateKeyPair('ES256');

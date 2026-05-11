@@ -13,8 +13,10 @@ import { signAccessToken, verifyAccessToken } from './jwt.js';
 import type { SessionStore } from '../session/store.js';
 import { logger } from '../utils/logger.js';
 
-const CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const CODE_TTL_MS = 10 * 60 * 1000;
+const STATE_TTL_MS = 10 * 60 * 1000;
+
+const DEFAULT_SCOPES = ['instagram', 'facebook'];
 
 function randomToken(bytes = 32): string {
   return randomBytes(bytes).toString('base64url');
@@ -24,8 +26,8 @@ interface MetaProviderOptions {
   store: SessionStore;
   metaAppId: string;
   metaAppSecret: string;
-  metaCallbackUri: string; // absolute URL: https://host/auth/meta/callback
-  serverAudience: string; // canonical MCP resource URI: https://host/mcp
+  metaCallbackUri: string;
+  serverAudience: string;
   jwtExpiry: string;
   refreshTokenExpirySeconds: number;
 }
@@ -65,37 +67,36 @@ export class MetaOAuthProvider implements OAuthServerProvider {
 
   async authorize(client: OAuthClientInformationFull, params: AuthorizationParams, res: Response): Promise<void> {
     const state = randomToken();
-    const expiresAt = Date.now() + STATE_TTL_MS;
 
     await this.store.setOAuthState(state, {
       codeChallenge: params.codeChallenge,
       redirectUri: params.redirectUri,
       clientId: client.client_id,
+      scopes: params.scopes ?? DEFAULT_SCOPES,
       resource: params.resource?.toString(),
       clientState: params.state,
-      expiresAt,
+      expiresAt: Date.now() + STATE_TTL_MS,
     });
 
-    const metaUrl = buildMetaAuthorizationUrl({
+    res.redirect(buildMetaAuthorizationUrl({
       appId: this.opts.metaAppId,
       redirectUri: this.opts.metaCallbackUri,
       state,
-    });
-
-    res.redirect(metaUrl);
+    }));
   }
 
   async challengeForAuthorizationCode(
-    _client: OAuthClientInformationFull,
+    client: OAuthClientInformationFull,
     authorizationCode: string
   ): Promise<string> {
     const record = await this.store.getMcpCode(authorizationCode);
     if (!record) throw new Error('Authorization code not found or expired');
+    if (record.clientId !== client.client_id) throw new Error('Authorization code was not issued to this client');
     return record.codeChallenge;
   }
 
   async exchangeAuthorizationCode(
-    _client: OAuthClientInformationFull,
+    client: OAuthClientInformationFull,
     authorizationCode: string,
     _codeVerifier?: string,
     _redirectUri?: string,
@@ -103,37 +104,37 @@ export class MetaOAuthProvider implements OAuthServerProvider {
   ): Promise<OAuthTokens> {
     const record = await this.store.getMcpCode(authorizationCode);
     if (!record) throw new Error('Authorization code not found or expired');
+    if (record.clientId !== client.client_id) throw new Error('Authorization code was not issued to this client');
     await this.store.deleteMcpCode(authorizationCode);
 
-    return this.issueTokens(record.subject);
+    return this.issueTokens(record.subject, client.client_id, record.scopes);
   }
 
   async exchangeRefreshToken(
-    _client: OAuthClientInformationFull,
+    client: OAuthClientInformationFull,
     refreshToken: string
   ): Promise<OAuthTokens> {
-    const subject = await this.store.getRefreshToken(refreshToken);
-    if (!subject) throw new Error('Refresh token not found or expired');
+    const stored = await this.store.getRefreshToken(refreshToken);
+    if (!stored) throw new Error('Refresh token not found or expired');
+    if (stored.clientId !== client.client_id) throw new Error('Refresh token was not issued to this client');
 
-    // Rotate: delete old token
     await this.store.deleteRefreshToken(refreshToken);
 
-    // Proactively refresh Meta token if stale
-    const session = await this.store.getSession(subject);
+    const session = await this.store.getSession(stored.subject);
     if (session && isMetaTokenStale(session.metaTokenExpiresAt)) {
       try {
         const refreshed = await refreshLongLivedToken(session.metaAccessToken);
-        await this.store.setSession(subject, {
+        await this.store.setSession(stored.subject, {
           ...session,
           metaAccessToken: refreshed.accessToken,
           metaTokenExpiresAt: Date.now() + refreshed.expiresIn * 1000,
         });
       } catch (err) {
-        logger.warn('Failed to refresh Meta token during MCP refresh', { subject, error: String(err) });
+        logger.warn('Failed to refresh Meta token during MCP refresh', { subject: stored.subject, error: String(err) });
       }
     }
 
-    return this.issueTokens(subject);
+    return this.issueTokens(stored.subject, client.client_id, DEFAULT_SCOPES);
   }
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
@@ -141,22 +142,22 @@ export class MetaOAuthProvider implements OAuthServerProvider {
   }
 
   async revokeToken(
-    _client: OAuthClientInformationFull,
+    client: OAuthClientInformationFull,
     request: OAuthTokenRevocationRequest
   ): Promise<void> {
     if (request.token_type_hint === 'refresh_token') {
-      await this.store.deleteRefreshToken(request.token);
+      const stored = await this.store.getRefreshToken(request.token);
+      if (stored && stored.clientId === client.client_id) {
+        await this.store.deleteRefreshToken(request.token);
+      }
     }
-    // Access tokens are JWTs — they expire naturally; no server-side revocation in PR1.
   }
 
-  // Called by the Meta callback route handler
   async handleMetaCallback(code: string, state: string): Promise<string> {
     const stateRecord = await this.store.getOAuthState(state);
     if (!stateRecord) throw new Error('OAuth state not found or expired');
     await this.store.deleteOAuthState(state);
 
-    // Exchange Meta code for short-lived token
     const { accessToken: shortToken, userId } = await exchangeMetaCode({
       code,
       appId: this.opts.metaAppId,
@@ -164,7 +165,6 @@ export class MetaOAuthProvider implements OAuthServerProvider {
       redirectUri: this.opts.metaCallbackUri,
     });
 
-    // Exchange for long-lived token (~60 days)
     const { accessToken: longToken, expiresIn } = await exchangeForLongLivedToken({
       shortLivedToken: shortToken,
       appSecret: this.opts.metaAppSecret,
@@ -178,43 +178,40 @@ export class MetaOAuthProvider implements OAuthServerProvider {
       igUserId: userId,
     });
 
-    // Issue MCP authorization code
     const mcpCode = randomToken();
     await this.store.setMcpCode(mcpCode, {
       subject,
       codeChallenge: stateRecord.codeChallenge,
       clientId: stateRecord.clientId,
+      scopes: stateRecord.scopes ?? DEFAULT_SCOPES,
       resource: stateRecord.resource,
       expiresAt: Date.now() + CODE_TTL_MS,
     });
 
-    // Redirect back to MCP client
     const redirectUri = new URL(stateRecord.redirectUri);
     redirectUri.searchParams.set('code', mcpCode);
     if (stateRecord.clientState) redirectUri.searchParams.set('state', stateRecord.clientState);
     return redirectUri.toString();
   }
 
-  private async issueTokens(subject: string): Promise<OAuthTokens> {
+  private async issueTokens(subject: string, clientId: string, scopes: string[]): Promise<OAuthTokens> {
     const accessToken = await signAccessToken({
       subject,
       audience: this.opts.serverAudience,
       expiresIn: this.opts.jwtExpiry,
+      scopes,
     });
 
     const refreshToken = randomToken();
     const refreshExpiresAt = Date.now() + this.opts.refreshTokenExpirySeconds * 1000;
-    await this.store.setRefreshToken(refreshToken, subject, refreshExpiresAt);
-
-    // Parse expiry from JWT expiry string (e.g. "1h" → 3600)
-    const expiresIn = parseExpiryToSeconds(this.opts.jwtExpiry);
+    await this.store.setRefreshToken(refreshToken, subject, clientId, refreshExpiresAt);
 
     return {
       access_token: accessToken,
       token_type: 'Bearer',
-      expires_in: expiresIn,
+      expires_in: parseExpiryToSeconds(this.opts.jwtExpiry),
       refresh_token: refreshToken,
-      scope: 'instagram facebook',
+      scope: scopes.join(' '),
     };
   }
 }
