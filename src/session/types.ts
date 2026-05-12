@@ -20,6 +20,7 @@ export interface OAuthStateRecord {
 export interface McpCodeRecord {
   subject: string;
   codeChallenge: string;
+  redirectUri: string;
   clientId: string;
   scopes: string[];
   resource?: string;

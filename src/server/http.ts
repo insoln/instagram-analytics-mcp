@@ -220,7 +220,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       if (!cfg.staticToken) { next(); return; }
       const auth = req.headers.authorization ?? '';
       if (!auth.startsWith('Bearer ') || auth.slice(7) !== cfg.staticToken) {
-        res.status(401).json({ error: 'Unauthorized' });
+        res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'Unauthorized' });
         return;
       }
       next();

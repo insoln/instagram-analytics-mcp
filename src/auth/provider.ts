@@ -117,12 +117,16 @@ export class MetaOAuthProvider implements OAuthServerProvider {
     client: OAuthClientInformationFull,
     authorizationCode: string,
     _codeVerifier?: string,
-    _redirectUri?: string,
-    _resource?: URL
+    redirectUri?: string,
+    resource?: URL
   ): Promise<OAuthTokens> {
     const record = await this.store.getMcpCode(authorizationCode);
     if (!record) throw new Error('Authorization code not found or expired');
     if (record.clientId !== client.client_id) throw new Error('Authorization code was not issued to this client');
+    // Validate redirect_uri if provided — OAuth 2.1 §4.1.3 requires it to match the authorization request.
+    if (redirectUri && redirectUri !== record.redirectUri) throw new Error('redirect_uri mismatch');
+    // Validate resource audience if provided.
+    if (resource && record.resource && resource.toString() !== record.resource) throw new Error('resource mismatch');
     await this.store.deleteMcpCode(authorizationCode);
 
     return this.issueTokens(record.subject, client.client_id, record.scopes);
@@ -201,6 +205,7 @@ export class MetaOAuthProvider implements OAuthServerProvider {
     await this.store.setMcpCode(mcpCode, {
       subject,
       codeChallenge: stateRecord.codeChallenge,
+      redirectUri: stateRecord.redirectUri,
       clientId: stateRecord.clientId,
       scopes: stateRecord.scopes,
       resource: stateRecord.resource,

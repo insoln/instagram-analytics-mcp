@@ -21,8 +21,16 @@ const ConfigSchema = z
     // Optional bearer key for http-static mode
     staticToken: z.string().optional(),
 
-    // Required for http-oauth mode
-    serverUrl: z.string().url().transform((u) => u.replace(/\/+$/, '')).optional(),
+    // Required for http-oauth mode.
+    // Must be an origin-only URL (no path/query/fragment) — paths would silently
+    // break callback URIs, audience values, and OAuth discovery endpoints.
+    serverUrl: z.string().url()
+      .refine((u) => {
+        try { const p = new URL(u); return (p.pathname === '/' || p.pathname === '') && !p.search && !p.hash; }
+        catch { return false; }
+      }, 'SERVER_URL must be an origin URL with no path, query, or fragment (e.g. https://example.com or https://example.com:3000)')
+      .transform((u) => new URL(u).origin)
+      .optional(),
     metaAppId: z.string().optional(),
     metaAppSecret: z.string().optional(),
     metaCallbackPath: z.string().transform((p) => p.startsWith('/') ? p : `/${p}`).default('/auth/meta/callback'),
@@ -35,6 +43,12 @@ const ConfigSchema = z
     if (data.mode === 'http-oauth') {
       if (!data.serverUrl) {
         ctx.addIssue({ code: 'custom', message: 'SERVER_URL is required in http-oauth mode', path: ['serverUrl'] });
+      } else {
+        const url = new URL(data.serverUrl);
+        const isLoopback = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+        if (!isLoopback && url.protocol !== 'https:') {
+          ctx.addIssue({ code: 'custom', message: 'SERVER_URL must use https:// in http-oauth mode (except localhost)', path: ['serverUrl'] });
+        }
       }
       if (!data.metaAppId) {
         ctx.addIssue({ code: 'custom', message: 'META_APP_ID is required in http-oauth mode', path: ['metaAppId'] });
