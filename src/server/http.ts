@@ -24,14 +24,13 @@ import { getAllTools } from '../tools.js';
 import { PROMPTS, getPromptContent } from '../prompts.js';
 import { handleInstagramTool, handleFacebookTool } from '../handlers.js';
 import { logger } from '../utils/logger.js';
+import { VERSION } from '../version.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-
-const VERSION = '3.0.0';
 
 const SESSION_TRANSPORT_MAX = 10_000;
 const SESSION_TRANSPORT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -191,7 +190,9 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     // from user B is combined with a leaked session ID from user A.
     if (entry && cfg.mode === 'http-oauth' && req.auth) {
       if (req.auth.clientId !== entry.authInfo?.clientId) {
-        res.status(401).json({ error: 'Session does not belong to the authenticated user' });
+        res.status(401)
+          .set('WWW-Authenticate', 'Bearer error="invalid_token", error_description="Session does not belong to the authenticated user"')
+          .json({ error: 'Session does not belong to the authenticated user' });
         return;
       }
     }
@@ -262,8 +263,10 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     const staticMiddleware = (req: Request, res: Response, next: NextFunction) => {
       if (!expectedTokenHash) { next(); return; }
       const auth = req.headers.authorization ?? '';
-      const presented = createHash('sha256').update(auth.startsWith('Bearer ') ? auth.slice(7) : '').digest();
-      if (!auth.startsWith('Bearer ') || !timingSafeEqual(presented, expectedTokenHash)) {
+      // RFC 6750: Bearer scheme name is case-insensitive; extract token with /i flag.
+      const token = /^bearer\s+(\S+)$/i.exec(auth)?.[1] ?? '';
+      const presented = createHash('sha256').update(token).digest();
+      if (!timingSafeEqual(presented, expectedTokenHash)) {
         res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'Unauthorized' });
         return;
       }

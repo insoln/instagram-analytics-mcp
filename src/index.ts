@@ -10,6 +10,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
+import { VERSION } from './version.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -33,10 +34,6 @@ export { PROMPTS, getPromptContent } from './prompts.js';
 export { handleInstagramTool, handleFacebookTool } from './handlers.js';
 export type { InstagramConfig } from './platforms/instagram/types.js';
 export type { FacebookConfig } from './platforms/facebook/types.js';
-
-// VERSION must be declared before `export const server = createServer()`
-// because createServer() references it and const is not hoisted (TDZ).
-const VERSION = '3.0.0';
 
 // Backward-compatible singleton for programmatic consumers who imported
 // `{ server }` from the previous version. Created eagerly at module
