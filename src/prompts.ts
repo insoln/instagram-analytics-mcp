@@ -128,7 +128,9 @@ Provide a comprehensive analysis including:
 
     case 'analyze_facebook_performance': {
       const pageId = args.page_id || 'configured page';
-      const period = args.period || 'days_28';
+      // Page metrics only accept day/week/days_28 — 'lifetime' is not valid for page-level insights.
+      const rawPeriod = args.period || 'days_28';
+      const period = rawPeriod === 'lifetime' ? 'days_28' : rawPeriod;
       return {
         messages: [
           {
@@ -143,7 +145,7 @@ Provide a comprehensive analysis including:
    - page_views_total
    - page_post_engagements
    - page_actions_post_reactions_total
-   - Use period: ${period}
+   - Use period: ${period} (must be day, week, or days_28 — not lifetime)
 3. Get recent posts with insights using facebook_list_posts_with_insights
    - post_metrics: post_impressions, post_engaged_users, post_clicks
    - limit: 10

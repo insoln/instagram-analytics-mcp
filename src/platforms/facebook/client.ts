@@ -259,9 +259,8 @@ export class FacebookClient {
       const query: Record<string, string> = {
         metric: params.metrics.join(','),
         access_token: accessToken,
+        period: 'lifetime', // all KNOWN_POST_METRICS require period=lifetime
       };
-
-      if (params.period) query.period = params.period;
 
       return this.request<InsightsResponse>({
         method: 'GET',
@@ -284,8 +283,9 @@ export class FacebookClient {
     const apiVersion = this.resolveApiVersion(params.apiVersion);
     const userToken = this.resolveAccessToken(params.accessToken);
 
+    // Append .period(lifetime) — all supported post metrics require period=lifetime.
     return this.withPageToken(pageId, userToken, apiVersion, async (accessToken) => {
-      const fields = `${DEFAULT_POST_FIELDS},insights.metric(${params.postMetrics.join(',')})`;
+      const fields = `${DEFAULT_POST_FIELDS},insights.metric(${params.postMetrics.join(',')}).period(lifetime)`;
       const query: Record<string, string> = {
         fields,
         access_token: accessToken,
