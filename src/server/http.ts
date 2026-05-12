@@ -58,6 +58,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       metaAppId: cfg.metaAppId!,
       metaAppSecret: cfg.metaAppSecret!,
       metaCallbackUri,
+      issuerUrl: serverUrl,
       serverAudience,
       jwtExpiry: cfg.jwtExpiry,
       refreshTokenExpirySeconds: cfg.refreshTokenExpirySeconds,
@@ -184,6 +185,10 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
         : [canonicalHost];
       const authInfo: AuthInfo | undefined = req.auth;
 
+      // Declare server before transport so the onsessioninitialized closure
+      // captures an already-assigned binding (avoids TDZ if the callback were
+      // ever invoked before connect() in a future refactor).
+      const server = buildMcpServer(authInfo);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
@@ -198,7 +203,6 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
         allowedHosts,
       });
 
-      const server = buildMcpServer(authInfo);
       entry = { transport, server, authInfo };
       await server.connect(transport);
     }
@@ -217,14 +221,16 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     app.get('/mcp', bearerMiddleware, handleMcp);
     app.delete('/mcp', bearerMiddleware, handleMcp);
   } else if (cfg.mode === 'http-static') {
+    // Pre-compute the expected token hash once at startup — cfg.staticToken is
+    // static, so recomputing it on every request would be wasteful.
+    const expectedTokenHash = cfg.staticToken
+      ? createHash('sha256').update(cfg.staticToken).digest()
+      : null;
     const staticMiddleware = (req: Request, res: Response, next: NextFunction) => {
-      if (!cfg.staticToken) { next(); return; }
+      if (!expectedTokenHash) { next(); return; }
       const auth = req.headers.authorization ?? '';
-      // Hash both values to fixed-length buffers before comparing so that
-      // timingSafeEqual can be used regardless of token length differences.
       const presented = createHash('sha256').update(auth.startsWith('Bearer ') ? auth.slice(7) : '').digest();
-      const expected = createHash('sha256').update(cfg.staticToken).digest();
-      if (!auth.startsWith('Bearer ') || !timingSafeEqual(presented, expected)) {
+      if (!auth.startsWith('Bearer ') || !timingSafeEqual(presented, expectedTokenHash)) {
         res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'Unauthorized' });
         return;
       }

@@ -44,6 +44,7 @@ interface MetaProviderOptions {
   metaAppId: string;
   metaAppSecret: string;
   metaCallbackUri: string;
+  issuerUrl: string;
   serverAudience: string;
   jwtExpiry: string;
   refreshTokenExpirySeconds: number;
@@ -76,7 +77,7 @@ class InMemoryClientsStore implements OAuthRegisteredClientsStore {
 
 export class MetaOAuthProvider implements OAuthServerProvider {
   readonly clientsStore: OAuthRegisteredClientsStore;
-  skipLocalPkceValidation = false;
+  readonly skipLocalPkceValidation = false;
 
   private readonly store: SessionStore;
   private readonly opts: MetaProviderOptions;
@@ -173,7 +174,7 @@ export class MetaOAuthProvider implements OAuthServerProvider {
   }
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
-    return verifyAccessToken(token, this.opts.serverAudience);
+    return verifyAccessToken(token, this.opts.serverAudience, this.opts.issuerUrl);
   }
 
   async revokeToken(
@@ -235,6 +236,7 @@ export class MetaOAuthProvider implements OAuthServerProvider {
     const accessToken = await signAccessToken({
       subject,
       audience: this.opts.serverAudience,
+      issuer: this.opts.issuerUrl,
       expiresIn: this.opts.jwtExpiry,
       scopes,
     });

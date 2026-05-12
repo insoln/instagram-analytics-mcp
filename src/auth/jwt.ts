@@ -39,6 +39,7 @@ export async function initJwtKeys(privateKeyJwkJson?: string): Promise<void> {
 export async function signAccessToken(params: {
   subject: string;
   audience: string;
+  issuer: string;
   expiresIn: string;
   scopes?: string[];
 }): Promise<string> {
@@ -48,16 +49,17 @@ export async function signAccessToken(params: {
     .setProtectedHeader({ alg: 'ES256', kid: keyId })
     .setSubject(params.subject)
     .setAudience(params.audience)
+    .setIssuer(params.issuer)
     .setIssuedAt()
     .setExpirationTime(params.expiresIn)
     .setJti(randomUUID())
     .sign(privateKey);
 }
 
-export async function verifyAccessToken(token: string, audience: string): Promise<AuthInfo> {
+export async function verifyAccessToken(token: string, audience: string, issuer: string): Promise<AuthInfo> {
   if (!publicKey) throw new Error('JWT keys not initialized');
 
-  const { payload } = await jwtVerify(token, publicKey, { audience });
+  const { payload } = await jwtVerify(token, publicKey, { audience, issuer });
   const { sub, scope } = payload as JWTPayload & { scope?: string };
 
   if (!sub) throw new Error('Missing sub claim in JWT');
