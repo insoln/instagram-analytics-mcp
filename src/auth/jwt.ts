@@ -3,10 +3,10 @@ import { randomUUID } from 'node:crypto';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
 import { logger } from '../utils/logger.js';
 
-let privateKey: CryptoKey;
-let publicKey: CryptoKey;
-let publicKeyJwk: Record<string, unknown>;
-let keyId: string;
+let privateKey: CryptoKey | undefined;
+let publicKey: CryptoKey | undefined;
+let publicKeyJwk: Record<string, unknown> | undefined;
+let keyId: string | undefined;
 
 export async function initJwtKeys(privateKeyJwkJson?: string): Promise<void> {
   if (privateKeyJwkJson) {
@@ -69,5 +69,6 @@ export async function verifyAccessToken(token: string, audience: string, issuer:
 }
 
 export function getJwks(): { keys: unknown[] } {
+  if (!publicKeyJwk) throw new Error('JWT keys not initialized');
   return { keys: [publicKeyJwk] };
 }
