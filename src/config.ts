@@ -18,7 +18,7 @@ const ConfigSchema = z
     instagramApiVersion: z.string().default('v23.0'),
     facebookAccessToken: z.string().optional(),
     facebookPageId: z.string().optional(),
-    facebookApiVersion: z.string().default('v22.0'),
+    facebookApiVersion: z.string().default('v23.0'),
 
     // Optional bearer key for http-static mode
     staticToken: z.string().optional(),
@@ -32,10 +32,6 @@ const ConfigSchema = z
     jwtExpiry: z.string().regex(/^\d+[smhd]$/, 'JWT_EXPIRY must be a number followed by s, m, h, or d (e.g. "1h", "30m")').default('1h'),
     refreshTokenExpirySeconds: z.coerce.number().int().positive().default(2592000), // 30 days
 
-    debug: z
-      .union([z.boolean(), z.string()])
-      .transform((v) => v === true || v === 'true' || (typeof v === 'string' && v.includes('social-analytics-mcp')))
-      .default(false),
   })
   .superRefine((data, ctx) => {
     if (data.mode === 'http-oauth') {
@@ -76,7 +72,6 @@ function load(): Config {
     jwtPrivateKeyJwk: process.env.JWT_PRIVATE_KEY_JWK,
     jwtExpiry: process.env.JWT_EXPIRY,
     refreshTokenExpirySeconds: process.env.REFRESH_TOKEN_EXPIRY_SECONDS,
-    debug: process.env.DEBUG,
   };
 
   const cleaned = Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== undefined && v !== ''));

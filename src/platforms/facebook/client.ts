@@ -27,7 +27,7 @@ import {
 } from './types.js';
 
 const GRAPH_API_BASE_URL = 'https://graph.facebook.com';
-const DEFAULT_API_VERSION = 'v22.0';
+const DEFAULT_API_VERSION = 'v23.0';
 const DEFAULT_POST_FIELDS = 'message,created_time,permalink_url';
 
 const KNOWN_PAGE_METRICS: KnownMetric[] = [

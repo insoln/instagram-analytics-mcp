@@ -18,6 +18,7 @@ export interface SessionStore {
 
   // Refresh tokens: opaque string → {subject, clientId, scopes} (long-lived, rotated on use)
   getRefreshToken(token: string): Promise<{ subject: string; clientId: string; scopes: string[] } | undefined>;
+  /** expiresAt: Unix timestamp in milliseconds (Date.now() + TTL) */
   setRefreshToken(token: string, subject: string, clientId: string, scopes: string[], expiresAt: number): Promise<void>;
   deleteRefreshToken(token: string): Promise<void>;
 }

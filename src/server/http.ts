@@ -6,6 +6,15 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
+
+// Augment Express Request to include auth info populated by requireBearerAuth.
+declare global {
+  namespace Express {
+    interface Request {
+      auth?: AuthInfo;
+    }
+  }
+}
 import type { Config } from '../config.js';
 import type { SessionStore } from '../session/store.js';
 import { MetaOAuthProvider } from '../auth/provider.js';
