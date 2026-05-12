@@ -127,9 +127,11 @@ export class MetaOAuthProvider implements OAuthServerProvider {
     if (redirectUri && redirectUri !== record.redirectUri) throw new Error('redirect_uri mismatch');
     // Validate resource audience if provided.
     if (resource && record.resource && resource.toString() !== record.resource) throw new Error('resource mismatch');
+    // Issue tokens before deleting the code so transient failures (JWT signing,
+    // store errors) leave the code intact and allow the client to retry.
+    const tokens = await this.issueTokens(record.subject, client.client_id, record.scopes);
     await this.store.deleteMcpCode(authorizationCode);
-
-    return this.issueTokens(record.subject, client.client_id, record.scopes);
+    return tokens;
   }
 
   async exchangeRefreshToken(
@@ -140,7 +142,11 @@ export class MetaOAuthProvider implements OAuthServerProvider {
     if (!stored) throw new Error('Refresh token not found or expired');
     if (stored.clientId !== client.client_id) throw new Error('Refresh token was not issued to this client');
 
-    await this.store.deleteRefreshToken(refreshToken);
+    // Issue new tokens (including new refresh token) before deleting the old one
+    // so that transient failures don't leave the client permanently logged out.
+    // There is a brief window where both tokens are valid; the old one is deleted
+    // immediately after. For full atomicity, use a transactional store (e.g., Redis
+    // with a Lua script) in the PR2 session store implementation.
 
     const session = await this.store.getSession(stored.subject);
     if (session && isMetaTokenStale(session.metaTokenExpiresAt)) {
@@ -156,7 +162,9 @@ export class MetaOAuthProvider implements OAuthServerProvider {
       }
     }
 
-    return this.issueTokens(stored.subject, client.client_id, stored.scopes);
+    const tokens = await this.issueTokens(stored.subject, client.client_id, stored.scopes);
+    await this.store.deleteRefreshToken(refreshToken);
+    return tokens;
   }
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {

@@ -35,6 +35,12 @@ export { handleInstagramTool, handleFacebookTool } from './handlers.js';
 export type { InstagramConfig } from './platforms/instagram/types.js';
 export type { FacebookConfig } from './platforms/facebook/types.js';
 
+// Backward-compatible singleton: programmatic consumers who imported
+// `{ server }` from the previous version can continue to do so.
+// The instance is created lazily on first import (dotenv.config() inside
+// createServer() is idempotent) and is not auto-connected.
+export const server = createServer();
+
 const VERSION = '3.0.0';
 
 /**
