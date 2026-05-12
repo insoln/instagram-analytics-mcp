@@ -55,6 +55,10 @@ interface PageTokenEntry {
   expiresAt: number;
 }
 
+function pageTokenCacheKey(pageId: string, userToken: string): string {
+  return createHash('sha256').update(`${pageId}:${userToken}`).digest('hex').slice(0, 32);
+}
+
 export class FacebookClient {
   private readonly axiosInstance: AxiosInstance;
   private readonly config: FacebookConfig;
@@ -78,7 +82,7 @@ export class FacebookClient {
   // On OAuth errors the cache entry is cleared and the fetch is retried once
   // to handle token rotation/revocation without requiring a restart.
   private async resolvePageToken(pageId: string, userToken: string, apiVersion: string): Promise<string> {
-    const cacheKey = createHash('sha256').update(`${pageId}:${userToken}`).digest('hex').slice(0, 32);
+    const cacheKey = pageTokenCacheKey(pageId, userToken);
     const cached = this.pageTokenCache.get(cacheKey);
     if (cached && Date.now() < cached.expiresAt) return cached.token;
 
@@ -110,12 +114,13 @@ export class FacebookClient {
   }
 
   private invalidatePageToken(pageId: string, userToken: string): void {
-    const cacheKey = createHash('sha256').update(`${pageId}:${userToken}`).digest('hex').slice(0, 32);
-    this.pageTokenCache.delete(cacheKey);
+    this.pageTokenCache.delete(pageTokenCacheKey(pageId, userToken));
   }
 
-  // Resolves a page token, runs fn, and retries once with a fresh token if an
-  // OAUTH error occurs (handles token rotation/revocation without a restart).
+  // Resolves a page token, runs fn, and retries once with a fresh token if a
+  // token-expiry OAUTH error occurs (code 190 / subcode TOKEN).
+  // Permission errors (subcode PERMISSION) are not retried — a fresh token
+  // will not fix a missing permission grant.
   private async withPageToken<T>(
     pageId: string,
     userToken: string,
@@ -126,11 +131,14 @@ export class FacebookClient {
     try {
       return await fn(pageToken);
     } catch (err) {
-      if (err instanceof FacebookApiError && err.normalized.code === 'OAUTH') {
+      const isTokenError =
+        err instanceof FacebookApiError &&
+        err.normalized.code === 'OAUTH' &&
+        err.normalized.subcode !== 'PERMISSION';
+      if (isTokenError) {
         this.invalidatePageToken(pageId, userToken);
         const freshToken = await this.fetchPageToken(pageId, userToken, apiVersion);
-        const cacheKey = createHash('sha256').update(`${pageId}:${userToken}`).digest('hex').slice(0, 32);
-        this.pageTokenCache.set(cacheKey, { token: freshToken, expiresAt: Date.now() + PAGE_TOKEN_CACHE_TTL_MS });
+        this.pageTokenCache.set(pageTokenCacheKey(pageId, userToken), { token: freshToken, expiresAt: Date.now() + PAGE_TOKEN_CACHE_TTL_MS });
         return fn(freshToken);
       }
       throw err;
