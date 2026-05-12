@@ -157,7 +157,12 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
   }
 
   async function handleMcp(req: Request, res: Response): Promise<void> {
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    const rawSessionId = req.headers['mcp-session-id'];
+    if (Array.isArray(rawSessionId)) {
+      res.status(400).json({ error: 'mcp-session-id must be a single header value' });
+      return;
+    }
+    const sessionId = rawSessionId; // string | undefined
     let entry = sessionId ? sessions.get(sessionId) : undefined;
 
     if (!entry) {

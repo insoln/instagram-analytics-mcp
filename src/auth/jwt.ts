@@ -20,7 +20,7 @@ export async function initJwtKeys(privateKeyJwkJson?: string): Promise<void> {
       privateKey = (await importJWK(parsed, 'ES256')) as CryptoKey;
       const { d: _d, ...pubJwk } = parsed;
       publicKey = (await importJWK(pubJwk, 'ES256')) as CryptoKey;
-      keyId = (parsed.kid as string) ?? randomUUID();
+      keyId = typeof parsed.kid === 'string' ? parsed.kid : randomUUID();
       publicKeyJwk = { ...pubJwk, kid: keyId, use: 'sig', alg: 'ES256' };
     } catch {
       throw new Error('JWT_PRIVATE_KEY_JWK is not a valid EC P-256 private key JWK.');

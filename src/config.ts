@@ -1,8 +1,6 @@
 import { z } from 'zod';
 import dotenv from 'dotenv';
 
-dotenv.config();
-
 export const ModeSchema = z.enum(['stdio-static', 'http-static', 'http-oauth']);
 export type Mode = z.infer<typeof ModeSchema>;
 
@@ -86,5 +84,8 @@ function load(): Config {
 }
 
 export function loadConfig(): Config {
+  // Load .env file if present — idempotent, no-op if already loaded or vars already set.
+  // Callers who manage env vars themselves (e.g. K8s, Docker) are unaffected.
+  dotenv.config();
   return load();
 }

@@ -18,6 +18,23 @@ const STATE_TTL_MS = 10 * 60 * 1000;
 
 const DEFAULT_SCOPES = ['instagram', 'facebook'];
 
+// Maps MCP scopes → the minimal set of Meta (Facebook Login) permissions needed.
+// 'business_management' is always included so Business Manager pages are discoverable.
+const META_PERMISSIONS_BY_MCP_SCOPE: Record<string, string[]> = {
+  instagram: ['pages_show_list', 'pages_read_engagement', 'instagram_basic', 'instagram_manage_insights'],
+  facebook:  ['pages_show_list', 'pages_read_engagement', 'read_insights'],
+};
+
+function mapMcpScopesToMetaPermissions(mcpScopes: string[]): string[] {
+  const perms = new Set<string>(['business_management']);
+  for (const scope of mcpScopes) {
+    for (const perm of META_PERMISSIONS_BY_MCP_SCOPE[scope] ?? []) {
+      perms.add(perm);
+    }
+  }
+  return [...perms];
+}
+
 function randomToken(bytes = 32): string {
   return randomBytes(bytes).toString('base64url');
 }
@@ -82,6 +99,7 @@ export class MetaOAuthProvider implements OAuthServerProvider {
       appId: this.opts.metaAppId,
       redirectUri: this.opts.metaCallbackUri,
       state,
+      scopes: mapMcpScopesToMetaPermissions(params.scopes ?? DEFAULT_SCOPES),
     }));
   }
 
