@@ -138,15 +138,14 @@ Provide a comprehensive analysis including:
               text: `Analyze Facebook Page performance for ${pageId} over ${period}. Please:
 
 1. First, use facebook_list_pages to verify the page is accessible
-2. Fetch page insights with these metrics:
-   - page_impressions
+2. Fetch page insights with these metrics (use facebook_list_known_metrics to confirm availability):
    - page_impressions_unique
-   - page_engaged_users
-   - page_post_engagements
    - page_views_total
+   - page_post_engagements
+   - page_actions_post_reactions_total
    - Use period: ${period}
 3. Get recent posts with insights using facebook_list_posts_with_insights
-   - post_metrics: post_impressions, post_engaged_users
+   - post_metrics: post_impressions, post_engaged_users, post_clicks
    - limit: 10
 
 Provide a comprehensive analysis including:
