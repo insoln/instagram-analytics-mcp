@@ -9,6 +9,7 @@
  */
 
 import { fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -125,7 +126,8 @@ async function runHttpServer(config: ReturnType<typeof loadConfig>): Promise<voi
 
 // Guard: only run the server when invoked directly as the CLI entry point.
 // This prevents startup side effects when the package is imported programmatically.
-const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+// Use realpathSync so symlinked bin entries (node_modules/.bin/) resolve correctly.
+const isMain = (() => { try { return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch { return false; } })();
 if (isMain) (async () => {
   let config: ReturnType<typeof loadConfig>;
   try {
