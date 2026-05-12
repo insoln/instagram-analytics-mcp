@@ -77,10 +77,9 @@ export class FacebookClient {
     });
   }
 
-  // Fetches and caches a Page Access Token for the given page.
-  // Page-level API endpoints (insights, posts) reject User Access Tokens.
-  // On OAuth errors the cache entry is cleared and the fetch is retried once
-  // to handle token rotation/revocation without requiring a restart.
+  // Returns a valid Page Access Token for the given page, fetching and caching
+  // it if absent or expired. Page-level API endpoints reject User Access Tokens.
+  // Retry/invalidation on token errors is handled by the caller (withPageToken).
   private async resolvePageToken(pageId: string, userToken: string, apiVersion: string): Promise<string> {
     const cacheKey = pageTokenCacheKey(pageId, userToken);
     const cached = this.pageTokenCache.get(cacheKey);
