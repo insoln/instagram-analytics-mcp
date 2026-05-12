@@ -87,6 +87,8 @@ export const PROMPTS: Prompt[] = [
   },
 ];
 
+const VALID_PAGE_PERIODS = new Set(['day', 'week', 'days_28']);
+
 export function getPromptContent(
   name: string,
   args: Record<string, string>
@@ -129,7 +131,6 @@ Provide a comprehensive analysis including:
     case 'analyze_facebook_performance': {
       const pageId = args.page_id || 'configured page';
       // Page metrics only accept day/week/days_28; fall back to days_28 for any other value.
-      const VALID_PAGE_PERIODS = new Set(['day', 'week', 'days_28']);
       const period = VALID_PAGE_PERIODS.has(args.period) ? args.period : 'days_28';
       return {
         messages: [
