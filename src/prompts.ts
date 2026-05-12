@@ -128,9 +128,10 @@ Provide a comprehensive analysis including:
 
     case 'analyze_facebook_performance': {
       const pageId = args.page_id || 'configured page';
-      // Page metrics only accept day/week/days_28 — 'lifetime' is not valid for page-level insights.
-      const rawPeriod = args.period || 'days_28';
-      const period = rawPeriod === 'lifetime' ? 'days_28' : rawPeriod;
+      // Page metrics only accept day/week/days_28; fall back to days_28 for any other value.
+      const period = (['day', 'week', 'days_28'] as const).includes(args.period as 'day' | 'week' | 'days_28')
+        ? args.period
+        : 'days_28';
       return {
         messages: [
           {
