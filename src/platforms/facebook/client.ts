@@ -65,6 +65,9 @@ export class FacebookClient {
   // Keyed by hash(pageId + userToken) to avoid storing raw tokens as Map keys.
   // TTL-bounded (1h) and capped at 500 entries to prevent unbounded growth.
   private readonly pageTokenCache = new Map<string, PageTokenEntry>();
+  // In-flight fetch promises keyed by cacheKey. Coalesces concurrent requests
+  // for the same page token so only one Graph API call is made per key.
+  private readonly inFlightFetches = new Map<string, Promise<string>>();
 
   constructor(config: FacebookConfig) {
     this.config = config;
@@ -79,15 +82,28 @@ export class FacebookClient {
 
   // Returns a valid Page Access Token for the given page, fetching and caching
   // it if absent or expired. Page-level API endpoints reject User Access Tokens.
+  // Concurrent calls for the same key share a single in-flight fetch so only
+  // one Graph API call is made regardless of how many requests arrive at once.
   // Retry/invalidation on token errors is handled by the caller (withPageToken).
   private async resolvePageToken(pageId: string, userToken: string, apiVersion: string): Promise<string> {
     const cacheKey = pageTokenCacheKey(pageId, userToken);
     const cached = this.pageTokenCache.get(cacheKey);
     if (cached && Date.now() < cached.expiresAt) return cached.token;
 
-    const token = await this.fetchPageToken(pageId, userToken, apiVersion);
-    this.storeCachedToken(cacheKey, token);
-    return token;
+    const existing = this.inFlightFetches.get(cacheKey);
+    if (existing) return existing;
+
+    const fetch = this.fetchPageToken(pageId, userToken, apiVersion).then((token) => {
+      this.inFlightFetches.delete(cacheKey);
+      this.storeCachedToken(cacheKey, token);
+      return token;
+    }).catch((err) => {
+      this.inFlightFetches.delete(cacheKey);
+      throw err;
+    });
+
+    this.inFlightFetches.set(cacheKey, fetch);
+    return fetch;
   }
 
   private async fetchPageToken(pageId: string, userToken: string, apiVersion: string): Promise<string> {
@@ -113,9 +129,22 @@ export class FacebookClient {
 
   // Single place that writes to pageTokenCache — enforces the eviction guard
   // so neither resolvePageToken nor the withPageToken retry can bypass it.
+  // When at capacity, expired entries are preferred for eviction over still-valid
+  // ones; FIFO is only used as a fallback when no expired entry is found.
   private storeCachedToken(cacheKey: string, token: string): void {
     if (!this.pageTokenCache.has(cacheKey) && this.pageTokenCache.size >= PAGE_TOKEN_CACHE_MAX) {
-      this.pageTokenCache.delete(this.pageTokenCache.keys().next().value!);
+      const now = Date.now();
+      let evicted = false;
+      for (const [k, v] of this.pageTokenCache) {
+        if (now >= v.expiresAt) {
+          this.pageTokenCache.delete(k);
+          evicted = true;
+          break;
+        }
+      }
+      if (!evicted) {
+        this.pageTokenCache.delete(this.pageTokenCache.keys().next().value!);
+      }
     }
     this.pageTokenCache.set(cacheKey, { token, expiresAt: Date.now() + PAGE_TOKEN_CACHE_TTL_MS });
   }
