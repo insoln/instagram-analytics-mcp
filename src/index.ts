@@ -36,11 +36,14 @@ export type { InstagramConfig } from './platforms/instagram/types.js';
 export type { FacebookConfig } from './platforms/facebook/types.js';
 
 // Backward-compatible singleton for programmatic consumers who imported
-// `{ server }` from the previous version. Created eagerly at module
-// evaluation time — process.env is read immediately on import, so env vars
-// must be set before this module is imported. The instance is unconnected;
-// call server.connect(transport) to start it.
-export const server = createServer();
+// `{ server }` from the previous version. The Server instance is created
+// lazily on first property access (no side effects at import time).
+// env vars must be set before first access; call server.connect(transport) to start.
+let _server: Server | undefined;
+export const server: Server = new Proxy(Object.create(Server.prototype) as Server, {
+  get(_t, p, r) { return Reflect.get((_server ??= createServer()), p, r); },
+  set(_t, p, v) { return Reflect.set((_server ??= createServer()), p, v); },
+});
 
 /**
  * Create a pre-configured MCP Server instance using static tokens from env vars.
@@ -130,12 +133,13 @@ async function runHttpServer(config: ReturnType<typeof loadConfig>): Promise<voi
     host: config.host,
   });
 
-  await startHttpServer(config, store);
+  const shutdown = await startHttpServer(config, store);
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', shutdown);
 }
 
 // Guard: only connect and listen when invoked directly as the CLI entry point.
-// Note: `export const server` above still runs at import time (backward compat);
-// this guard only prevents the server from connecting/listening when imported.
+// `export const server` is now lazy — no side effects at import time.
 // Use realpathSync so symlinked bin entries (node_modules/.bin/) resolve correctly.
 const isMain = (() => { try { return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch { return false; } })();
 if (isMain) (async () => {

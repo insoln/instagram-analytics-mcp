@@ -42,7 +42,7 @@ interface TransportEntry {
   createdAt: number;
 }
 
-export async function startHttpServer(cfg: Config, store: SessionStore): Promise<void> {
+export async function startHttpServer(cfg: Config, store: SessionStore): Promise<() => void> {
   const app = express();
   app.use(express.json());
 
@@ -307,6 +307,5 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     setTimeout(() => process.exit(1), 10_000);
   }
 
-  process.once('SIGTERM', shutdown);
-  process.once('SIGINT', shutdown);
+  return shutdown;
 }
