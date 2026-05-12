@@ -286,7 +286,7 @@ export const FACEBOOK_TOOLS: Tool[] = [
   },
   {
     name: 'facebook_get_page_insights',
-    description: 'Fetch page-level insights for a Facebook Page. Common metrics: page_impressions, page_impressions_unique, page_engaged_users, page_post_engagements, page_views_total, page_fans.',
+    description: 'Fetch page-level insights for a Facebook Page. Supported metrics: page_impressions_unique, page_views_total, page_post_engagements, page_actions_post_reactions_total, page_video_views. Use facebook_list_known_metrics to see the full list with valid periods.',
     inputSchema: {
       type: 'object',
       required: ['metrics'],
@@ -325,7 +325,7 @@ export const FACEBOOK_TOOLS: Tool[] = [
   },
   {
     name: 'facebook_get_post_insights',
-    description: 'Fetch insights for a specific Facebook Page post. Common metrics: post_impressions, post_impressions_unique, post_engaged_users.',
+    description: 'Fetch insights for a specific Facebook Page post. Supported metrics (all use period=lifetime): post_impressions, post_impressions_unique, post_engaged_users, post_clicks, post_reactions_by_type_total. Use facebook_list_known_metrics to see the full list.',
     inputSchema: {
       type: 'object',
       required: ['post_id', 'metrics'],
@@ -363,7 +363,7 @@ export const FACEBOOK_TOOLS: Tool[] = [
           type: 'array',
           items: { type: 'string' },
           minItems: 1,
-          description: 'List of post metrics to include inline',
+          description: 'List of post metrics to include inline (e.g., post_impressions, post_engaged_users, post_clicks). Use facebook_list_known_metrics for the full list.',
         },
         limit: {
           type: 'integer',
