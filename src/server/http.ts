@@ -117,6 +117,10 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     for (const [id, entry] of sessions) if (entry.createdAt < cutoff) sessions.delete(id);
   }
 
+  // Background sweep mirrors MemorySessionStore's approach — O(n) sweep runs
+  // periodically instead of on every new session creation.
+  const sessionSweepTimer = setInterval(sweepSessions, 5 * 60 * 1000).unref();
+
   // authInfo is captured at session creation time (from the initialize request)
   // and stored in the session entry so all subsequent requests in the same
   // session use the same identity without touching private transport internals.
@@ -218,7 +222,6 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
-          sweepSessions();
           if (sessions.size >= SESSION_TRANSPORT_MAX) {
             sessions.delete(sessions.keys().next().value!);
           }
@@ -289,6 +292,8 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
 
   function shutdown() {
     logger.info('Shutting down HTTP server...');
+    clearInterval(sessionSweepTimer);
+    store.stopSweep?.();
     httpServer.close(() => {
       logger.info('HTTP server closed');
       process.exit(0);

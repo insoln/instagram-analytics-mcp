@@ -40,10 +40,9 @@ const VERSION = '3.0.0';
 
 // Backward-compatible singleton for programmatic consumers who imported
 // `{ server }` from the previous version. Created eagerly at module
-// evaluation time. The instance is unconnected — call
-// server.connect(transport) to start it.
-// NOTE: env vars are NOT loaded automatically here. Call dotenv.config()
-// (or set env vars another way) before importing if you need .env support.
+// evaluation time — process.env is read immediately on import, so env vars
+// must be set before this module is imported. The instance is unconnected;
+// call server.connect(transport) to start it.
 export const server = createServer();
 
 /**

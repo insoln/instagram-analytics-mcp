@@ -21,4 +21,7 @@ export interface SessionStore {
   /** expiresAt: Unix timestamp in milliseconds (Date.now() + TTL) */
   setRefreshToken(token: string, subject: string, clientId: string, scopes: string[], expiresAt: number): Promise<void>;
   deleteRefreshToken(token: string): Promise<void>;
+
+  /** Optional: stop background sweep timers for clean shutdown/testing. */
+  stopSweep?(): void;
 }
