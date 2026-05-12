@@ -126,8 +126,9 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
   function buildMcpServer(authInfo: AuthInfo | undefined): Server {
     const server = new Server({ name: 'social-analytics-mcp', version: VERSION }, { capabilities: { tools: {}, prompts: {} } });
 
-    // Cache per-session client instances — constructors create Axios instances,
-    // so we avoid recreating them on every tool call within the same session.
+    // Cache per-session context for static modes (token is fixed for the session
+    // lifetime). In http-oauth mode we re-resolve on every tool call so that
+    // Meta token staleness and refresh are re-evaluated on each request.
     let cachedContext: SessionContext | undefined;
 
     server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: getAllTools() }));
@@ -150,7 +151,9 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       });
 
       try {
-        if (!cachedContext) cachedContext = await resolveContext(authInfo, cfg, store);
+        if (!cachedContext || cfg.mode === 'http-oauth') {
+          cachedContext = await resolveContext(authInfo, cfg, store);
+        }
         const ctx = cachedContext;
         let result: unknown;
         if (name.startsWith('instagram_')) {
