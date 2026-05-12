@@ -133,8 +133,9 @@ async function runHttpServer(config: ReturnType<typeof loadConfig>): Promise<voi
   await startHttpServer(config, store);
 }
 
-// Guard: only run the server when invoked directly as the CLI entry point.
-// This prevents startup side effects when the package is imported programmatically.
+// Guard: only connect and listen when invoked directly as the CLI entry point.
+// Note: `export const server` above still runs at import time (backward compat);
+// this guard only prevents the server from connecting/listening when imported.
 // Use realpathSync so symlinked bin entries (node_modules/.bin/) resolve correctly.
 const isMain = (() => { try { return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch { return false; } })();
 if (isMain) (async () => {

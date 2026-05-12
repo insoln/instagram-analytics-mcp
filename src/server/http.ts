@@ -178,8 +178,8 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     const sessionId = rawSessionId; // string | undefined
     let entry = sessionId ? sessions.get(sessionId) : undefined;
 
-    // Enforce TTL on every request — sweepSessions() only runs at creation time
-    // so without this check an expired entry could be used indefinitely.
+    // Enforce TTL on every request — the background timer sweeps periodically
+    // but a session that slips through between sweeps must still be rejected here.
     if (entry && Date.now() - entry.createdAt > SESSION_TRANSPORT_TTL_MS) {
       sessions.delete(sessionId!);
       entry = undefined;
