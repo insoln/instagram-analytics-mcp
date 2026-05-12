@@ -129,9 +129,8 @@ Provide a comprehensive analysis including:
     case 'analyze_facebook_performance': {
       const pageId = args.page_id || 'configured page';
       // Page metrics only accept day/week/days_28; fall back to days_28 for any other value.
-      const period = (['day', 'week', 'days_28'] as const).includes(args.period as 'day' | 'week' | 'days_28')
-        ? args.period
-        : 'days_28';
+      const VALID_PAGE_PERIODS = new Set(['day', 'week', 'days_28']);
+      const period = VALID_PAGE_PERIODS.has(args.period) ? args.period : 'days_28';
       return {
         messages: [
           {
