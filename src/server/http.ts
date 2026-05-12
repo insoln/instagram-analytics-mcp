@@ -175,6 +175,13 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     const sessionId = rawSessionId; // string | undefined
     let entry = sessionId ? sessions.get(sessionId) : undefined;
 
+    // Enforce TTL on every request — sweepSessions() only runs at creation time
+    // so without this check an expired entry could be used indefinitely.
+    if (entry && Date.now() - entry.createdAt > SESSION_TRANSPORT_TTL_MS) {
+      sessions.delete(sessionId!);
+      entry = undefined;
+    }
+
     // In http-oauth mode, verify the JWT subject matches the session's recorded
     // subject on every request. Prevents session hijacking where a valid JWT
     // from user B is combined with a leaked session ID from user A.

@@ -24,11 +24,30 @@ export class MemorySessionStore implements SessionStore {
   private oauthStates = new Map<string, OAuthStateRecord>();
   private mcpCodes = new Map<string, McpCodeRecord>();
   private refreshTokens = new Map<string, RefreshRecord>();
+  private sweepTimer: ReturnType<typeof setInterval> | undefined;
 
-  // Sweep expired entries on every write to prevent unbounded growth.
-  // Short-lived records (states, codes, refresh tokens) are swept on expiry.
-  // Sessions are swept after metaTokenExpiresAt + SESSION_GRACE_MS to allow
-  // one last token-refresh attempt before eviction.
+  /**
+   * @param sweepIntervalMs How often to purge expired entries in the background.
+   *   Defaults to 5 minutes. Pass 0 to disable the timer (useful in tests).
+   *   Memory is still bounded by the per-map size caps regardless of sweep frequency.
+   */
+  constructor(sweepIntervalMs = 5 * 60 * 1000) {
+    if (sweepIntervalMs > 0) {
+      // .unref() so the timer doesn't prevent process exit.
+      this.sweepTimer = setInterval(() => this.sweepExpired(), sweepIntervalMs).unref();
+    }
+  }
+
+  stopSweep(): void {
+    if (this.sweepTimer) {
+      clearInterval(this.sweepTimer);
+      this.sweepTimer = undefined;
+    }
+  }
+
+  // Purge expired entries from all maps. Called periodically by the background
+  // timer. Per-read lazy expiry (in get* methods) handles individual lookups.
+  // Size caps in set* methods bound memory growth between sweeps.
   private sweepExpired(): void {
     const now = Date.now();
     for (const [k, v] of this.oauthStates) if (now > v.expiresAt) this.oauthStates.delete(k);
@@ -48,7 +67,6 @@ export class MemorySessionStore implements SessionStore {
   }
 
   async setSession(subject: string, record: SessionRecord): Promise<void> {
-    this.sweepExpired();
     // Evict oldest entry only when inserting a new subject (not updating an existing one).
     if (!this.sessions.has(subject) && this.sessions.size >= SESSION_MAX) {
       this.sessions.delete(this.sessions.keys().next().value!);
@@ -71,7 +89,6 @@ export class MemorySessionStore implements SessionStore {
   }
 
   async setOAuthState(state: string, record: OAuthStateRecord): Promise<void> {
-    this.sweepExpired();
     if (!this.oauthStates.has(state) && this.oauthStates.size >= OAUTH_STATE_MAX) {
       this.oauthStates.delete(this.oauthStates.keys().next().value!);
     }
@@ -93,7 +110,6 @@ export class MemorySessionStore implements SessionStore {
   }
 
   async setMcpCode(code: string, record: McpCodeRecord): Promise<void> {
-    this.sweepExpired();
     if (!this.mcpCodes.has(code) && this.mcpCodes.size >= MCP_CODE_MAX) {
       this.mcpCodes.delete(this.mcpCodes.keys().next().value!);
     }
@@ -115,7 +131,6 @@ export class MemorySessionStore implements SessionStore {
   }
 
   async setRefreshToken(token: string, subject: string, clientId: string, scopes: string[], expiresAt: number): Promise<void> {
-    this.sweepExpired();
     if (!this.refreshTokens.has(token) && this.refreshTokens.size >= REFRESH_TOKEN_MAX) {
       this.refreshTokens.delete(this.refreshTokens.keys().next().value!);
     }

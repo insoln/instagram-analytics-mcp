@@ -192,7 +192,8 @@ export class MetaOAuthProvider implements OAuthServerProvider {
   async handleMetaCallback(code: string, state: string): Promise<string> {
     const stateRecord = await this.store.getOAuthState(state);
     if (!stateRecord) throw new Error('OAuth state not found or expired');
-    await this.store.deleteOAuthState(state);
+    // Do NOT delete OAuth state yet — delete it only after all exchange and
+    // persist operations succeed so the user can retry on transient errors.
 
     const { accessToken: shortToken, userId } = await exchangeMetaCode({
       code,
@@ -225,6 +226,9 @@ export class MetaOAuthProvider implements OAuthServerProvider {
       resource: stateRecord.resource,
       expiresAt: Date.now() + CODE_TTL_MS,
     });
+
+    // All operations succeeded — consume the state so it cannot be replayed.
+    await this.store.deleteOAuthState(state);
 
     const redirectUri = new URL(stateRecord.redirectUri);
     redirectUri.searchParams.set('code', mcpCode);
