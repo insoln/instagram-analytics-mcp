@@ -427,12 +427,19 @@ export class FacebookClient {
     let code = 'GRAPH';
     let subcode: string | undefined;
 
-    if (graphError.code === 190 || graphError.type === 'OAuthException') {
+    if (graphError.code === 190) {
+      // Code 190: access token expired or invalid — the only case where a fresh
+      // page token exchange can recover the request (subcode TOKEN triggers retry).
       code = 'OAUTH';
       subcode = graphError.error_subcode ? String(graphError.error_subcode) : 'TOKEN';
     } else if ([10, 200, 299].includes(graphError.code ?? 0)) {
       code = 'OAUTH';
       subcode = 'PERMISSION';
+    } else if (graphError.type === 'OAuthException') {
+      // Other OAuthExceptions (e.g. app-level errors) — OAuth class but not
+      // retryable via page token refresh.
+      code = 'OAUTH';
+      subcode = graphError.error_subcode ? String(graphError.error_subcode) : undefined;
     } else if ([4, 17, 32, 613].includes(graphError.code ?? 0)) {
       code = 'RATE_LIMIT';
     } else if (graphError.code === 100) {
