@@ -183,7 +183,7 @@ export class MetaOAuthProvider implements OAuthServerProvider {
       subject,
       codeChallenge: stateRecord.codeChallenge,
       clientId: stateRecord.clientId,
-      scopes: stateRecord.scopes ?? DEFAULT_SCOPES,
+      scopes: stateRecord.scopes,
       resource: stateRecord.resource,
       expiresAt: Date.now() + CODE_TTL_MS,
     });

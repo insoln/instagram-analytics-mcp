@@ -107,11 +107,10 @@ async function runStdioStatic(): Promise<void> {
   await server.connect(transport);
 }
 
-async function runHttpServer(): Promise<void> {
+async function runHttpServer(config: ReturnType<typeof loadConfig>): Promise<void> {
   const { MemorySessionStore } = await import('./session/memory-store.js');
   const { startHttpServer } = await import('./server/http.js');
 
-  const config = loadConfig();
   const store = new MemorySessionStore();
 
   logger.info(`Social Analytics MCP Server v${VERSION} starting (${config.mode})`, {
@@ -122,21 +121,21 @@ async function runHttpServer(): Promise<void> {
   await startHttpServer(config, store);
 }
 
-// Entry point
+// Entry point — config is loaded once here; http path receives it to avoid a second parse.
 (async () => {
+  let config: ReturnType<typeof loadConfig>;
   try {
-    let mode: string;
-    try {
-      mode = loadConfig().mode;
-    } catch (error) {
-      logger.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
-    }
+    config = loadConfig();
+  } catch (error) {
+    logger.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 
-    if (mode === 'stdio-static') {
+  try {
+    if (config.mode === 'stdio-static') {
       await runStdioStatic();
     } else {
-      await runHttpServer();
+      await runHttpServer(config);
     }
   } catch (error) {
     logger.error('Failed to start server', error);
