@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+const metaHttp = axios.create({ timeout: 10_000 });
+
 const IG_AUTHORIZE_URL = 'https://www.instagram.com/oauth/authorize';
 const IG_TOKEN_URL = 'https://api.instagram.com/oauth/access_token';
 const IG_LONG_LIVED_URL = 'https://graph.instagram.com/access_token';
@@ -45,7 +47,7 @@ export async function exchangeMetaCode(params: {
     code: params.code,
   });
 
-  const response = await axios.post<ShortLivedTokenResponse>(IG_TOKEN_URL, body.toString(), {
+  const response = await metaHttp.post<ShortLivedTokenResponse>(IG_TOKEN_URL, body.toString(), {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   });
 
@@ -58,7 +60,7 @@ export async function exchangeMetaCode(params: {
 }
 
 async function fetchMetaUserId(accessToken: string): Promise<string> {
-  const response = await axios.get<{ id: string }>(IG_ME_URL, {
+  const response = await metaHttp.get<{ id: string }>(IG_ME_URL, {
     params: { access_token: accessToken, fields: 'id' },
   });
   return response.data.id;
@@ -74,7 +76,7 @@ export async function exchangeForLongLivedToken(params: {
   shortLivedToken: string;
   appSecret: string;
 }): Promise<{ accessToken: string; expiresIn: number }> {
-  const response = await axios.get<LongLivedTokenResponse>(IG_LONG_LIVED_URL, {
+  const response = await metaHttp.get<LongLivedTokenResponse>(IG_LONG_LIVED_URL, {
     params: {
       grant_type: 'ig_exchange_token',
       client_secret: params.appSecret,
@@ -88,7 +90,7 @@ export async function exchangeForLongLivedToken(params: {
 }
 
 export async function refreshLongLivedToken(accessToken: string): Promise<{ accessToken: string; expiresIn: number }> {
-  const response = await axios.get<LongLivedTokenResponse>(IG_REFRESH_URL, {
+  const response = await metaHttp.get<LongLivedTokenResponse>(IG_REFRESH_URL, {
     params: {
       grant_type: 'ig_refresh_token',
       access_token: accessToken,

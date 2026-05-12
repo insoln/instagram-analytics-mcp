@@ -134,7 +134,7 @@ export class MetaOAuthProvider implements OAuthServerProvider {
       }
     }
 
-    return this.issueTokens(stored.subject, client.client_id, DEFAULT_SCOPES);
+    return this.issueTokens(stored.subject, client.client_id, stored.scopes);
   }
 
   async verifyAccessToken(token: string): Promise<AuthInfo> {
@@ -204,7 +204,7 @@ export class MetaOAuthProvider implements OAuthServerProvider {
 
     const refreshToken = randomToken();
     const refreshExpiresAt = Date.now() + this.opts.refreshTokenExpirySeconds * 1000;
-    await this.store.setRefreshToken(refreshToken, subject, clientId, refreshExpiresAt);
+    await this.store.setRefreshToken(refreshToken, subject, clientId, scopes, refreshExpiresAt);
 
     return {
       access_token: accessToken,

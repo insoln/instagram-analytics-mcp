@@ -16,7 +16,7 @@ import {
   ListPromptsRequestSchema,
   GetPromptRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { config } from './config.js';
+import { loadConfig } from './config.js';
 import { InstagramClient } from './platforms/instagram/client.js';
 import { FacebookClient } from './platforms/facebook/client.js';
 import { getAllTools } from './tools.js';
@@ -34,20 +34,27 @@ export type { FacebookConfig } from './platforms/facebook/types.js';
 
 const VERSION = '3.0.0';
 
-async function runStdioStatic(): Promise<void> {
-  const instagramClient = config.instagramAccessToken
+/**
+ * Create and connect a stdio MCP server using static tokens from env vars.
+ * Preserved for backward compatibility with programmatic usage.
+ */
+export function createServer() {
+  const instagramAccessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
+  const facebookAccessToken = process.env.FACEBOOK_ACCESS_TOKEN;
+
+  const instagramClient = instagramAccessToken
     ? new InstagramClient({
-        accessToken: config.instagramAccessToken,
-        accountId: config.instagramAccountId,
-        apiVersion: config.instagramApiVersion,
+        accessToken: instagramAccessToken,
+        accountId: process.env.INSTAGRAM_ACCOUNT_ID,
+        apiVersion: process.env.INSTAGRAM_API_VERSION,
       })
     : null;
 
-  const facebookClient = config.facebookAccessToken
+  const facebookClient = facebookAccessToken
     ? new FacebookClient({
-        accessToken: config.facebookAccessToken,
-        pageId: config.facebookPageId,
-        defaultApiVersion: config.facebookApiVersion,
+        accessToken: facebookAccessToken,
+        pageId: process.env.FACEBOOK_PAGE_ID,
+        defaultApiVersion: process.env.FACEBOOK_API_VERSION,
       })
     : null;
 
@@ -90,13 +97,13 @@ async function runStdioStatic(): Promise<void> {
     }
   });
 
+  return server;
+}
+
+async function runStdioStatic(): Promise<void> {
+  const server = createServer();
   const transport = new StdioServerTransport();
-
-  logger.info(`Social Analytics MCP Server v${VERSION} starting (stdio-static)`, {
-    instagram: !!instagramClient,
-    facebook: !!facebookClient,
-  });
-
+  logger.info(`Social Analytics MCP Server v${VERSION} starting (stdio-static)`);
   await server.connect(transport);
 }
 
@@ -104,6 +111,7 @@ async function runHttpServer(): Promise<void> {
   const { MemorySessionStore } = await import('./session/memory-store.js');
   const { startHttpServer } = await import('./server/http.js');
 
+  const config = loadConfig();
   const store = new MemorySessionStore();
 
   logger.info(`Social Analytics MCP Server v${VERSION} starting (${config.mode})`, {
@@ -117,7 +125,15 @@ async function runHttpServer(): Promise<void> {
 // Entry point
 (async () => {
   try {
-    if (config.mode === 'stdio-static') {
+    let mode: string;
+    try {
+      mode = loadConfig().mode;
+    } catch (error) {
+      logger.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+
+    if (mode === 'stdio-static') {
       await runStdioStatic();
     } else {
       await runHttpServer();

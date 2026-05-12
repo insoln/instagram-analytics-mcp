@@ -10,7 +10,7 @@ import type { Config } from '../config.js';
 import type { SessionStore } from '../session/store.js';
 import { MetaOAuthProvider } from '../auth/provider.js';
 import { initJwtKeys, getJwks } from '../auth/jwt.js';
-import { resolveContext } from '../context.js';
+import { resolveContext, type SessionContext } from '../context.js';
 import { getAllTools } from '../tools.js';
 import { PROMPTS, getPromptContent } from '../prompts.js';
 import { handleInstagramTool, handleFacebookTool } from '../handlers.js';
@@ -63,16 +63,21 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     );
 
     app.get(cfg.metaCallbackPath, async (req: Request, res: Response) => {
-      const { code, state, error, error_description } = req.query as Record<string, string>;
+      // Validate that code and state are single strings (not arrays) before use.
+      const code = typeof req.query.code === 'string' ? req.query.code : undefined;
+      const state = typeof req.query.state === 'string' ? req.query.state : undefined;
+      const error = typeof req.query.error === 'string' ? req.query.error : undefined;
+      const errorDesc = typeof req.query.error_description === 'string' ? req.query.error_description : undefined;
 
       if (error) {
-        logger.warn('Meta OAuth callback error', { error, error_description });
-        res.status(400).send(`Meta authorization failed: ${error_description ?? error}`);
+        logger.warn('Meta OAuth callback error', { error, error_description: errorDesc });
+        // Use text/plain to prevent reflected XSS — these values are user-controlled.
+        res.status(400).type('text/plain').send(`Meta authorization failed: ${errorDesc ?? error}`);
         return;
       }
 
       if (!code || !state) {
-        res.status(400).send('Missing code or state parameter');
+        res.status(400).type('text/plain').send('Missing code or state parameter');
         return;
       }
 
@@ -81,7 +86,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
         res.redirect(redirectUrl);
       } catch (err) {
         logger.error('Meta callback handling failed', err);
-        res.status(400).send(`Authorization failed: ${err instanceof Error ? err.message : String(err)}`);
+        res.status(400).type('text/plain').send('Authorization failed');
       }
     });
 
@@ -97,6 +102,10 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
   // session use the same identity without touching private transport internals.
   function buildMcpServer(authInfo: AuthInfo | undefined): Server {
     const server = new Server({ name: 'social-analytics-mcp', version: VERSION }, { capabilities: { tools: {}, prompts: {} } });
+
+    // Cache per-session client instances — constructors create Axios instances,
+    // so we avoid recreating them on every tool call within the same session.
+    let cachedContext: SessionContext | undefined;
 
     server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: getAllTools() }));
     server.setRequestHandler(ListPromptsRequestSchema, async () => ({ prompts: PROMPTS }));
@@ -118,7 +127,8 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       });
 
       try {
-        const ctx = await resolveContext(authInfo, cfg, store);
+        if (!cachedContext) cachedContext = await resolveContext(authInfo, cfg, store);
+        const ctx = cachedContext;
         let result: unknown;
         if (name.startsWith('instagram_')) {
           result = await handleInstagramTool(name, (args ?? {}) as Record<string, unknown>, ctx.instagramClient);

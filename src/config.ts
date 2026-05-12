@@ -29,7 +29,7 @@ const ConfigSchema = z
     metaAppSecret: z.string().optional(),
     metaCallbackPath: z.string().default('/auth/meta/callback'),
     jwtPrivateKeyJwk: z.string().optional(),
-    jwtExpiry: z.string().default('1h'),
+    jwtExpiry: z.string().regex(/^\d+[smhd]$/, 'JWT_EXPIRY must be a number followed by s, m, h, or d (e.g. "1h", "30m")').default('1h'),
     refreshTokenExpirySeconds: z.coerce.number().int().positive().default(2592000), // 30 days
 
     debug: z
@@ -79,18 +79,17 @@ function load(): Config {
     debug: process.env.DEBUG,
   };
 
-  const cleaned = Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== undefined));
+  const cleaned = Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== undefined && v !== ''));
   const result = ConfigSchema.safeParse(cleaned);
 
   if (!result.success) {
-    console.error('[config] Invalid configuration:');
-    for (const issue of result.error.issues) {
-      console.error(`  ${issue.path.join('.')}: ${issue.message}`);
-    }
-    process.exit(1);
+    const messages = result.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n');
+    throw new Error(`Invalid configuration:\n${messages}`);
   }
 
   return result.data;
 }
 
-export const config: Config = load();
+export function loadConfig(): Config {
+  return load();
+}
