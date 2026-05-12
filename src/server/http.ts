@@ -160,7 +160,14 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       const serverUrl = cfg.serverUrl ?? `http://localhost:${cfg.port}`;
       const parsedHost = new URL(serverUrl).hostname;
       // '0.0.0.0' is a listen address, not a valid Host header value.
-      const allowedHost = parsedHost === '0.0.0.0' ? 'localhost' : parsedHost;
+      const canonicalHost = parsedHost === '0.0.0.0' ? 'localhost' : parsedHost;
+      // Only add loopback aliases when actually running locally; including them
+      // unconditionally for external hostnames widens the accepted Host header
+      // set and can undermine DNS rebinding protection.
+      const isLocal = ['localhost', '127.0.0.1', '::1'].includes(canonicalHost);
+      const allowedHosts = isLocal
+        ? [canonicalHost, 'localhost', '127.0.0.1']
+        : [canonicalHost];
       const authInfo: AuthInfo | undefined = req.auth;
 
       const transport = new StreamableHTTPServerTransport({
@@ -174,7 +181,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
           logger.debug('MCP session closed', { sessionId: id });
         },
         enableDnsRebindingProtection: true,
-        allowedHosts: [allowedHost, 'localhost', '127.0.0.1'],
+        allowedHosts,
       });
 
       const server = buildMcpServer(authInfo);

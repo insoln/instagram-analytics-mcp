@@ -1,7 +1,7 @@
 import type { McpCodeRecord, OAuthStateRecord, SessionRecord } from './types.js';
 
 export interface SessionStore {
-  // Long-lived Meta token records, keyed by subject ("ig_<userId>")
+  // Long-lived Meta token records, keyed by subject ("fb_<userId>")
   getSession(subject: string): Promise<SessionRecord | undefined>;
   setSession(subject: string, record: SessionRecord): Promise<void>;
   deleteSession(subject: string): Promise<void>;

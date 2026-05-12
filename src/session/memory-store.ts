@@ -14,6 +14,15 @@ export class MemorySessionStore implements SessionStore {
   private mcpCodes = new Map<string, McpCodeRecord>();
   private refreshTokens = new Map<string, RefreshRecord>();
 
+  // Sweep expired short-lived entries on every set to prevent unbounded growth
+  // from abandoned OAuth flows. Sessions are long-lived and not swept here.
+  private sweepExpired(): void {
+    const now = Date.now();
+    for (const [k, v] of this.oauthStates) if (now > v.expiresAt) this.oauthStates.delete(k);
+    for (const [k, v] of this.mcpCodes) if (now > v.expiresAt) this.mcpCodes.delete(k);
+    for (const [k, v] of this.refreshTokens) if (now > v.expiresAt) this.refreshTokens.delete(k);
+  }
+
   async getSession(subject: string): Promise<SessionRecord | undefined> {
     return this.sessions.get(subject);
   }
@@ -37,6 +46,7 @@ export class MemorySessionStore implements SessionStore {
   }
 
   async setOAuthState(state: string, record: OAuthStateRecord): Promise<void> {
+    this.sweepExpired();
     this.oauthStates.set(state, record);
   }
 
@@ -56,6 +66,8 @@ export class MemorySessionStore implements SessionStore {
 
   async setMcpCode(code: string, record: McpCodeRecord): Promise<void> {
     this.mcpCodes.set(code, record);
+    // No sweep here — sweepExpired is called by setOAuthState which always
+    // precedes setMcpCode in the OAuth flow.
   }
 
   async deleteMcpCode(code: string): Promise<void> {

@@ -10,6 +10,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
+import dotenv from 'dotenv';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -40,8 +41,13 @@ const VERSION = '3.0.0';
  * Create a pre-configured MCP Server instance using static tokens from env vars.
  * Returns an unconnected Server; call server.connect(transport) to start it.
  * Preserved for backward compatibility with programmatic usage.
+ *
+ * Calls dotenv.config() so that a .env file in the working directory is loaded
+ * automatically, matching the behavior of the CLI entry point.
  */
 export function createServer() {
+  // Load .env if not already done — idempotent, safe to call multiple times.
+  dotenv.config();
   const instagramAccessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
   const facebookAccessToken = process.env.FACEBOOK_ACCESS_TOKEN;
 

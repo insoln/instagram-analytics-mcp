@@ -176,7 +176,7 @@ export class MetaOAuthProvider implements OAuthServerProvider {
       subject,
       metaAccessToken: longToken,
       metaTokenExpiresAt: Date.now() + expiresIn * 1000,
-      igUserId: userId,
+      fbUserId: userId,
     });
 
     const mcpCode = randomToken();

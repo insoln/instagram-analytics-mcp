@@ -1,8 +1,8 @@
 export interface SessionRecord {
-  subject: string; // "ig_<meta_user_id>"
+  subject: string; // "fb_<facebook_user_id>"
   metaAccessToken: string;
   metaTokenExpiresAt: number; // Unix ms
-  igUserId: string;
+  fbUserId: string;
 }
 
 // Short-lived: stores PKCE + client info during Meta OAuth redirect (keyed by state param)
