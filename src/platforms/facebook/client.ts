@@ -154,6 +154,10 @@ export class FacebookClient {
   // with no specific error_subcode).  More specific subcodes (PERMISSION,
   // numeric Meta subcodes for revoked/expired user tokens) are not retried
   // because a fresh page token will not resolve them.
+  // Note: if multiple coalesced callers all receive the same invalid token and
+  // each enters the retry path, each issues its own fresh fetchPageToken call.
+  // This is an acceptable edge case — the results are correct and the extra
+  // calls are bounded by the number of concurrent waiters (typically very small).
   private async withPageToken<T>(
     pageId: string,
     userToken: string,
