@@ -31,14 +31,15 @@ interface TransportEntry {
 }
 
 export async function startHttpServer(cfg: Config, store: SessionStore): Promise<void> {
-  await initJwtKeys(cfg.jwtPrivateKeyJwk);
-
   const app = express();
   app.use(express.json());
 
   let provider: MetaOAuthProvider | null = null;
 
   if (cfg.mode === 'http-oauth') {
+    // JWT keys are only needed in http-oauth mode; skip in http-static to avoid
+    // unnecessary key generation and the ephemeral-key warning.
+    await initJwtKeys(cfg.jwtPrivateKeyJwk);
     const serverUrl = cfg.serverUrl!;
     const metaCallbackUri = `${serverUrl}${cfg.metaCallbackPath}`;
     const serverAudience = `${serverUrl}/mcp`;

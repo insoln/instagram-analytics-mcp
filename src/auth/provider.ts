@@ -123,7 +123,7 @@ export class MetaOAuthProvider implements OAuthServerProvider {
     const session = await this.store.getSession(stored.subject);
     if (session && isMetaTokenStale(session.metaTokenExpiresAt)) {
       try {
-        const refreshed = await refreshLongLivedToken(session.metaAccessToken);
+        const refreshed = await refreshLongLivedToken({ accessToken: session.metaAccessToken, appId: this.opts.metaAppId, appSecret: this.opts.metaAppSecret });
         await this.store.setSession(stored.subject, {
           ...session,
           metaAccessToken: refreshed.accessToken,
@@ -167,10 +167,11 @@ export class MetaOAuthProvider implements OAuthServerProvider {
 
     const { accessToken: longToken, expiresIn } = await exchangeForLongLivedToken({
       shortLivedToken: shortToken,
+      appId: this.opts.metaAppId,
       appSecret: this.opts.metaAppSecret,
     });
 
-    const subject = `ig_${userId}`;
+    const subject = `fb_${userId}`;
     await this.store.setSession(subject, {
       subject,
       metaAccessToken: longToken,

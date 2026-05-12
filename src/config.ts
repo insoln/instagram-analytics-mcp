@@ -24,7 +24,7 @@ const ConfigSchema = z
     staticToken: z.string().optional(),
 
     // Required for http-oauth mode
-    serverUrl: z.string().url().optional(),
+    serverUrl: z.string().url().transform((u) => u.replace(/\/+$/, '')).optional(),
     metaAppId: z.string().optional(),
     metaAppSecret: z.string().optional(),
     metaCallbackPath: z.string().default('/auth/meta/callback'),

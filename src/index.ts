@@ -8,6 +8,7 @@
  *   http-oauth             — HTTP transport, Meta OAuth 2.1 multi-tenant
  */
 
+import { fileURLToPath } from 'node:url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -35,7 +36,8 @@ export type { FacebookConfig } from './platforms/facebook/types.js';
 const VERSION = '3.0.0';
 
 /**
- * Create and connect a stdio MCP server using static tokens from env vars.
+ * Create a pre-configured MCP Server instance using static tokens from env vars.
+ * Returns an unconnected Server; call server.connect(transport) to start it.
  * Preserved for backward compatibility with programmatic usage.
  */
 export function createServer() {
@@ -121,8 +123,10 @@ async function runHttpServer(config: ReturnType<typeof loadConfig>): Promise<voi
   await startHttpServer(config, store);
 }
 
-// Entry point — config is loaded once here; http path receives it to avoid a second parse.
-(async () => {
+// Guard: only run the server when invoked directly as the CLI entry point.
+// This prevents startup side effects when the package is imported programmatically.
+const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMain) (async () => {
   let config: ReturnType<typeof loadConfig>;
   try {
     config = loadConfig();
