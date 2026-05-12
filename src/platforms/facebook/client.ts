@@ -86,13 +86,7 @@ export class FacebookClient {
     if (cached && Date.now() < cached.expiresAt) return cached.token;
 
     const token = await this.fetchPageToken(pageId, userToken, apiVersion);
-
-    // Evict oldest entry only when inserting a new key. Refreshing an expired
-    // entry (same cacheKey) does not grow the map, so no eviction is needed.
-    if (!this.pageTokenCache.has(cacheKey) && this.pageTokenCache.size >= PAGE_TOKEN_CACHE_MAX) {
-      this.pageTokenCache.delete(this.pageTokenCache.keys().next().value!);
-    }
-    this.pageTokenCache.set(cacheKey, { token, expiresAt: Date.now() + PAGE_TOKEN_CACHE_TTL_MS });
+    this.storeCachedToken(cacheKey, token);
     return token;
   }
 
@@ -117,6 +111,15 @@ export class FacebookClient {
     this.pageTokenCache.delete(pageTokenCacheKey(pageId, userToken));
   }
 
+  // Single place that writes to pageTokenCache — enforces the eviction guard
+  // so neither resolvePageToken nor the withPageToken retry can bypass it.
+  private storeCachedToken(cacheKey: string, token: string): void {
+    if (!this.pageTokenCache.has(cacheKey) && this.pageTokenCache.size >= PAGE_TOKEN_CACHE_MAX) {
+      this.pageTokenCache.delete(this.pageTokenCache.keys().next().value!);
+    }
+    this.pageTokenCache.set(cacheKey, { token, expiresAt: Date.now() + PAGE_TOKEN_CACHE_TTL_MS });
+  }
+
   // Resolves a page token, runs fn, and retries once with a fresh token if the
   // page token is invalid or expired (OAUTH / subcode TOKEN — graph code 190
   // with no specific error_subcode).  More specific subcodes (PERMISSION,
@@ -139,7 +142,7 @@ export class FacebookClient {
       if (isTokenError) {
         this.invalidatePageToken(pageId, userToken);
         const freshToken = await this.fetchPageToken(pageId, userToken, apiVersion);
-        this.pageTokenCache.set(pageTokenCacheKey(pageId, userToken), { token: freshToken, expiresAt: Date.now() + PAGE_TOKEN_CACHE_TTL_MS });
+        this.storeCachedToken(pageTokenCacheKey(pageId, userToken), freshToken);
         return fn(freshToken);
       }
       throw err;
