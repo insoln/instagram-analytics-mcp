@@ -10,7 +10,6 @@
 
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
-import dotenv from 'dotenv';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -35,11 +34,12 @@ export { handleInstagramTool, handleFacebookTool } from './handlers.js';
 export type { InstagramConfig } from './platforms/instagram/types.js';
 export type { FacebookConfig } from './platforms/facebook/types.js';
 
-// Backward-compatible singleton: programmatic consumers who imported
-// `{ server }` from the previous version can continue to do so.
-// Created eagerly at module evaluation time (dotenv.config() inside
-// createServer() is idempotent). The instance is unconnected —
-// call server.connect(transport) to start it.
+// Backward-compatible singleton for programmatic consumers who imported
+// `{ server }` from the previous version. Created eagerly at module
+// evaluation time. The instance is unconnected — call
+// server.connect(transport) to start it.
+// NOTE: env vars are NOT loaded automatically here. Call dotenv.config()
+// (or set env vars another way) before importing if you need .env support.
 export const server = createServer();
 
 const VERSION = '3.0.0';
@@ -49,12 +49,10 @@ const VERSION = '3.0.0';
  * Returns an unconnected Server; call server.connect(transport) to start it.
  * Preserved for backward compatibility with programmatic usage.
  *
- * Calls dotenv.config() so that a .env file in the working directory is loaded
- * automatically, matching the behavior of the CLI entry point.
+ * Does NOT call dotenv.config(). The CLI entry point handles env loading via
+ * loadConfig(). Programmatic callers must set env vars themselves before calling.
  */
 export function createServer() {
-  // Load .env if not already done — idempotent, safe to call multiple times.
-  dotenv.config();
   const instagramAccessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
   const facebookAccessToken = process.env.FACEBOOK_ACCESS_TOKEN;
 

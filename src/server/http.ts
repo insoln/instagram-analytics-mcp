@@ -33,10 +33,14 @@ import {
 
 const VERSION = '3.0.0';
 
+const SESSION_TRANSPORT_MAX = 10_000;
+const SESSION_TRANSPORT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 interface TransportEntry {
   transport: StreamableHTTPServerTransport;
   server: Server;
   authInfo: AuthInfo | undefined;
+  createdAt: number;
 }
 
 export async function startHttpServer(cfg: Config, store: SessionStore): Promise<void> {
@@ -108,6 +112,11 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
 
   const sessions = new Map<string, TransportEntry>();
 
+  function sweepSessions(): void {
+    const cutoff = Date.now() - SESSION_TRANSPORT_TTL_MS;
+    for (const [id, entry] of sessions) if (entry.createdAt < cutoff) sessions.delete(id);
+  }
+
   // authInfo is captured at session creation time (from the initialize request)
   // and stored in the session entry so all subsequent requests in the same
   // session use the same identity without touching private transport internals.
@@ -166,6 +175,16 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     const sessionId = rawSessionId; // string | undefined
     let entry = sessionId ? sessions.get(sessionId) : undefined;
 
+    // In http-oauth mode, verify the JWT subject matches the session's recorded
+    // subject on every request. Prevents session hijacking where a valid JWT
+    // from user B is combined with a leaked session ID from user A.
+    if (entry && cfg.mode === 'http-oauth' && req.auth) {
+      if (req.auth.clientId !== entry.authInfo?.clientId) {
+        res.status(401).json({ error: 'Session does not belong to the authenticated user' });
+        return;
+      }
+    }
+
     if (!entry) {
       if (!isInitializeRequest(req.body)) {
         res.status(400).json({ error: 'No active session. Send initialize request first.' });
@@ -192,7 +211,11 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
-          sessions.set(id, { transport, server, authInfo });
+          sweepSessions();
+          if (sessions.size >= SESSION_TRANSPORT_MAX) {
+            sessions.delete(sessions.keys().next().value!);
+          }
+          sessions.set(id, { transport, server, authInfo, createdAt: Date.now() });
           logger.debug('MCP session initialized', { sessionId: id });
         },
         onsessionclosed: (id) => {
@@ -203,11 +226,11 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
         allowedHosts,
       });
 
-      entry = { transport, server, authInfo };
+      entry = { transport, server, authInfo, createdAt: Date.now() };
       await server.connect(transport);
     }
 
-    await entry.transport.handleRequest(req, res, req.body);
+    await entry!.transport.handleRequest(req, res, req.body);
   }
 
   // cfg.serverUrl is guaranteed non-null in http-oauth mode by superRefine validation.

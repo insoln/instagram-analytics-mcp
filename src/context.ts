@@ -57,7 +57,11 @@ export async function resolveContext(
   // auth.clientId is the JWT `sub` claim, which we set to the session subject ("fb_<userId>").
   let session = await store.getSession(auth.clientId);
   if (!session) {
-    return { instagramClient: null, facebookClient: null };
+    // Throw an actionable OAuth-specific message rather than returning null clients
+    // (which would surface the misleading "Please set INSTAGRAM_ACCESS_TOKEN" error).
+    throw new Error(
+      'OAuth session not found. Please complete the authorization flow to connect your Meta account.'
+    );
   }
 
   // Refresh the Meta token proactively when it's within the stale window (7 days
@@ -83,11 +87,10 @@ export async function resolveContext(
         expired: Date.now() > session.metaTokenExpiresAt,
         error: String(err),
       });
-      // If the token is already expired and we couldn't refresh, return null clients
-      // so tool calls fail with a clear "not initialized" message rather than a
-      // cryptic Graph API auth error.
       if (Date.now() > session.metaTokenExpiresAt) {
-        return { instagramClient: null, facebookClient: null };
+        throw new Error(
+          'Meta access token has expired and could not be refreshed. Please re-authenticate via the OAuth flow.'
+        );
       }
     }
   }
