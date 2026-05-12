@@ -34,6 +34,10 @@ export { handleInstagramTool, handleFacebookTool } from './handlers.js';
 export type { InstagramConfig } from './platforms/instagram/types.js';
 export type { FacebookConfig } from './platforms/facebook/types.js';
 
+// VERSION must be declared before `export const server = createServer()`
+// because createServer() references it and const is not hoisted (TDZ).
+const VERSION = '3.0.0';
+
 // Backward-compatible singleton for programmatic consumers who imported
 // `{ server }` from the previous version. Created eagerly at module
 // evaluation time. The instance is unconnected — call
@@ -41,8 +45,6 @@ export type { FacebookConfig } from './platforms/facebook/types.js';
 // NOTE: env vars are NOT loaded automatically here. Call dotenv.config()
 // (or set env vars another way) before importing if you need .env support.
 export const server = createServer();
-
-const VERSION = '3.0.0';
 
 /**
  * Create a pre-configured MCP Server instance using static tokens from env vars.

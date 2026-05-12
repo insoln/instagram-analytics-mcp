@@ -6,8 +6,8 @@ import type { McpCodeRecord, OAuthStateRecord, SessionRecord } from './types.js'
 const SESSION_MAX = 10_000;
 const SESSION_GRACE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-// Size caps for short-lived maps. Entries are also swept by sweepExpired() on
-// every write. Caps bound memory growth from high-frequency OAuth flows or DoS.
+// Size caps for short-lived maps. Caps bound memory growth between periodic sweeps.
+// Expired entries are also removed lazily in get* methods on each access.
 const OAUTH_STATE_MAX = 5_000;
 const MCP_CODE_MAX = 5_000;
 const REFRESH_TOKEN_MAX = 100_000;
