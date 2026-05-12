@@ -37,8 +37,9 @@ export type { FacebookConfig } from './platforms/facebook/types.js';
 
 // Backward-compatible singleton: programmatic consumers who imported
 // `{ server }` from the previous version can continue to do so.
-// The instance is created lazily on first import (dotenv.config() inside
-// createServer() is idempotent) and is not auto-connected.
+// Created eagerly at module evaluation time (dotenv.config() inside
+// createServer() is idempotent). The instance is unconnected —
+// call server.connect(transport) to start it.
 export const server = createServer();
 
 const VERSION = '3.0.0';

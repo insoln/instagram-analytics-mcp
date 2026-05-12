@@ -6,6 +6,12 @@ import type { McpCodeRecord, OAuthStateRecord, SessionRecord } from './types.js'
 const SESSION_MAX = 10_000;
 const SESSION_GRACE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+// Size caps for short-lived maps. Entries are also swept by sweepExpired() on
+// every write. Caps bound memory growth from high-frequency OAuth flows or DoS.
+const OAUTH_STATE_MAX = 5_000;
+const MCP_CODE_MAX = 5_000;
+const REFRESH_TOKEN_MAX = 100_000;
+
 interface RefreshRecord {
   subject: string;
   clientId: string;
@@ -32,7 +38,13 @@ export class MemorySessionStore implements SessionStore {
   }
 
   async getSession(subject: string): Promise<SessionRecord | undefined> {
-    return this.sessions.get(subject);
+    const record = this.sessions.get(subject);
+    if (!record) return undefined;
+    if (Date.now() > record.metaTokenExpiresAt + SESSION_GRACE_MS) {
+      this.sessions.delete(subject);
+      return undefined;
+    }
+    return record;
   }
 
   async setSession(subject: string, record: SessionRecord): Promise<void> {
@@ -60,6 +72,9 @@ export class MemorySessionStore implements SessionStore {
 
   async setOAuthState(state: string, record: OAuthStateRecord): Promise<void> {
     this.sweepExpired();
+    if (!this.oauthStates.has(state) && this.oauthStates.size >= OAUTH_STATE_MAX) {
+      this.oauthStates.delete(this.oauthStates.keys().next().value!);
+    }
     this.oauthStates.set(state, record);
   }
 
@@ -79,6 +94,9 @@ export class MemorySessionStore implements SessionStore {
 
   async setMcpCode(code: string, record: McpCodeRecord): Promise<void> {
     this.sweepExpired();
+    if (!this.mcpCodes.has(code) && this.mcpCodes.size >= MCP_CODE_MAX) {
+      this.mcpCodes.delete(this.mcpCodes.keys().next().value!);
+    }
     this.mcpCodes.set(code, record);
   }
 
@@ -98,6 +116,9 @@ export class MemorySessionStore implements SessionStore {
 
   async setRefreshToken(token: string, subject: string, clientId: string, scopes: string[], expiresAt: number): Promise<void> {
     this.sweepExpired();
+    if (!this.refreshTokens.has(token) && this.refreshTokens.size >= REFRESH_TOKEN_MAX) {
+      this.refreshTokens.delete(this.refreshTokens.keys().next().value!);
+    }
     this.refreshTokens.set(token, { subject, clientId, scopes, expiresAt });
   }
 

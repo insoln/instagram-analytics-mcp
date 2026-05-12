@@ -49,6 +49,8 @@ interface MetaProviderOptions {
   refreshTokenExpirySeconds: number;
 }
 
+const MAX_REGISTERED_CLIENTS = 1_000;
+
 class InMemoryClientsStore implements OAuthRegisteredClientsStore {
   private clients = new Map<string, OAuthClientInformationFull>();
 
@@ -64,6 +66,9 @@ class InMemoryClientsStore implements OAuthRegisteredClientsStore {
       client_id: randomToken(16),
       client_id_issued_at: Math.floor(Date.now() / 1000),
     };
+    if (this.clients.size >= MAX_REGISTERED_CLIENTS) {
+      this.clients.delete(this.clients.keys().next().value!);
+    }
     this.clients.set(full.client_id, full);
     return full;
   }

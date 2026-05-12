@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual, createHash } from 'node:crypto';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -206,8 +206,9 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     await entry.transport.handleRequest(req, res, req.body);
   }
 
+  // cfg.serverUrl is guaranteed non-null in http-oauth mode by superRefine validation.
   const resourceMetadataUrl = cfg.mode === 'http-oauth'
-    ? `${cfg.serverUrl}/.well-known/oauth-protected-resource`
+    ? `${cfg.serverUrl!}/.well-known/oauth-protected-resource`
     : undefined;
 
   if (cfg.mode === 'http-oauth' && provider) {
@@ -219,7 +220,11 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     const staticMiddleware = (req: Request, res: Response, next: NextFunction) => {
       if (!cfg.staticToken) { next(); return; }
       const auth = req.headers.authorization ?? '';
-      if (!auth.startsWith('Bearer ') || auth.slice(7) !== cfg.staticToken) {
+      // Hash both values to fixed-length buffers before comparing so that
+      // timingSafeEqual can be used regardless of token length differences.
+      const presented = createHash('sha256').update(auth.startsWith('Bearer ') ? auth.slice(7) : '').digest();
+      const expected = createHash('sha256').update(cfg.staticToken).digest();
+      if (!auth.startsWith('Bearer ') || !timingSafeEqual(presented, expected)) {
         res.status(401).set('WWW-Authenticate', 'Bearer').json({ error: 'Unauthorized' });
         return;
       }
