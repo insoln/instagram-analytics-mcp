@@ -38,6 +38,15 @@ export class MemorySessionStore implements SessionStore {
     }
   }
 
+  // Evict one entry from a map: prefers an expired entry, falls back to FIFO.
+  // Prevents a full map from evicting valid entries when expired ones are present.
+  private evictOne<V>(map: Map<string, V>, isExpired: (v: V) => boolean): void {
+    for (const [k, v] of map) {
+      if (isExpired(v)) { map.delete(k); return; }
+    }
+    map.delete(map.keys().next().value!);
+  }
+
   stopSweep(): void {
     if (this.sweepTimer) {
       clearInterval(this.sweepTimer);
@@ -67,9 +76,8 @@ export class MemorySessionStore implements SessionStore {
   }
 
   async setSession(subject: string, record: SessionRecord): Promise<void> {
-    // Evict oldest entry only when inserting a new subject (not updating an existing one).
     if (!this.sessions.has(subject) && this.sessions.size >= SESSION_MAX) {
-      this.sessions.delete(this.sessions.keys().next().value!);
+      this.evictOne(this.sessions, (v) => Date.now() > v.metaTokenExpiresAt + SESSION_GRACE_MS);
     }
     this.sessions.set(subject, record);
   }
@@ -90,7 +98,7 @@ export class MemorySessionStore implements SessionStore {
 
   async setOAuthState(state: string, record: OAuthStateRecord): Promise<void> {
     if (!this.oauthStates.has(state) && this.oauthStates.size >= OAUTH_STATE_MAX) {
-      this.oauthStates.delete(this.oauthStates.keys().next().value!);
+      this.evictOne(this.oauthStates, (v) => Date.now() > v.expiresAt);
     }
     this.oauthStates.set(state, record);
   }
@@ -111,7 +119,7 @@ export class MemorySessionStore implements SessionStore {
 
   async setMcpCode(code: string, record: McpCodeRecord): Promise<void> {
     if (!this.mcpCodes.has(code) && this.mcpCodes.size >= MCP_CODE_MAX) {
-      this.mcpCodes.delete(this.mcpCodes.keys().next().value!);
+      this.evictOne(this.mcpCodes, (v) => Date.now() > v.expiresAt);
     }
     this.mcpCodes.set(code, record);
   }
@@ -132,7 +140,7 @@ export class MemorySessionStore implements SessionStore {
 
   async setRefreshToken(token: string, subject: string, clientId: string, scopes: string[], expiresAt: number): Promise<void> {
     if (!this.refreshTokens.has(token) && this.refreshTokens.size >= REFRESH_TOKEN_MAX) {
-      this.refreshTokens.delete(this.refreshTokens.keys().next().value!);
+      this.evictOne(this.refreshTokens, (v) => Date.now() > v.expiresAt);
     }
     this.refreshTokens.set(token, { subject, clientId, scopes, expiresAt });
   }
