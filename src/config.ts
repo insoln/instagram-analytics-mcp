@@ -46,6 +46,16 @@ const ConfigSchema = z
 
   })
   .superRefine((data, ctx) => {
+    if (data.mode === 'http-static') {
+      const isLoopback = data.host && ['localhost', '127.0.0.1', '::1'].includes(data.host);
+      if (!isLoopback && !data.serverUrl) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `SERVER_URL is required in http-static mode when HOST is not a loopback address (currently "${data.host ?? '0.0.0.0'}"). Set SERVER_URL to declare the external URL, or set HOST to "localhost" for local-only access.`,
+          path: ['serverUrl'],
+        });
+      }
+    }
     if (data.mode === 'http-oauth') {
       if (!data.serverUrl) {
         ctx.addIssue({ code: 'custom', message: 'SERVER_URL is required in http-oauth mode', path: ['serverUrl'] });
@@ -97,10 +107,13 @@ function load(): Config {
   // Strip fields irrelevant to the resolved mode so strict validators
   // (SERVER_URL origin check, JWT_EXPIRY regex, port coercion, etc.) never
   // throw on unrelated env vars present in generic deployment environments.
-  const OAUTH_ONLY_KEYS = ['serverUrl', 'metaAppId', 'metaAppSecret',
-    'metaCallbackPath', 'jwtPrivateKeyJwk', 'jwtExpiry', 'refreshTokenExpirySeconds'];
+  // Keys that are only meaningful in http-oauth mode.
+  // serverUrl is intentionally kept in http-static so the superRefine host-binding
+  // check can require it when the server binds to a non-loopback address.
+  const OAUTH_ONLY_KEYS = ['metaAppId', 'metaAppSecret', 'metaCallbackPath',
+    'jwtPrivateKeyJwk', 'jwtExpiry', 'refreshTokenExpirySeconds'];
   if (mode === 'stdio-static') {
-    for (const key of ['port', 'host', 'staticToken', ...OAUTH_ONLY_KEYS]) delete cleaned[key];
+    for (const key of ['port', 'host', 'staticToken', 'serverUrl', ...OAUTH_ONLY_KEYS]) delete cleaned[key];
   } else if (mode === 'http-static') {
     for (const key of OAUTH_ONLY_KEYS) delete cleaned[key];
   }

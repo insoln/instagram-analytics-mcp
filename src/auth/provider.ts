@@ -68,7 +68,14 @@ class InMemoryClientsStore implements OAuthRegisteredClientsStore {
       client_id_issued_at: Math.floor(Date.now() / 1000),
     };
     if (this.clients.size >= MAX_REGISTERED_CLIENTS) {
-      this.clients.delete(this.clients.keys().next().value!);
+      const evictedId = this.clients.keys().next().value!;
+      // Log before eviction so operators can detect capacity issues; previously-
+      // registered clients may fail to re-authenticate after being evicted.
+      logger.warn('OAuth client store at capacity; evicting oldest registration', {
+        evictedClientId: evictedId,
+        limit: MAX_REGISTERED_CLIENTS,
+      });
+      this.clients.delete(evictedId);
     }
     this.clients.set(full.client_id, full);
     return full;
