@@ -232,8 +232,8 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
         return;
       }
 
-      const serverUrl = cfg.serverUrl ?? `http://localhost:${cfg.port}`;
-      const parsedHost = new URL(serverUrl).hostname;
+      const effectiveServerUrl = cfg.serverUrl ?? `http://localhost:${cfg.port}`;
+      const parsedHost = new URL(effectiveServerUrl).hostname;
       // '0.0.0.0' is a listen address, not a valid Host header value.
       const canonicalHost = parsedHost === '0.0.0.0' ? 'localhost' : parsedHost;
       // Only add loopback aliases when actually running locally; including them

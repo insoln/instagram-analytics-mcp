@@ -187,7 +187,16 @@ export class MetaOAuthProvider implements OAuthServerProvider {
     }
 
     const tokens = await this.issueTokens(stored.subject, client.client_id, stored.scopes);
-    await this.store.deleteRefreshToken(refreshToken);
+    // Best-effort delete — matches the pattern in exchangeAuthorizationCode.
+    // If deletion fails after issuance, the old token remains valid until expiry
+    // but the client already has fresh tokens. Full atomicity requires Redis+Lua.
+    try {
+      await this.store.deleteRefreshToken(refreshToken);
+    } catch (err) {
+      logger.warn('Failed to delete refresh token after rotation; old token remains valid until expiry', {
+        error: String(err),
+      });
+    }
     return tokens;
   }
 
