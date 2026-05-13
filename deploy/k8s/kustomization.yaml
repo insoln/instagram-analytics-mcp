@@ -10,7 +10,6 @@ resources:
   - redis-statefulset.yaml
   - deployment.yaml
   - service.yaml
-  - certificate.yaml
   - ingress.yaml
   # - hpa.yaml  # uncomment to enable horizontal autoscaling
 

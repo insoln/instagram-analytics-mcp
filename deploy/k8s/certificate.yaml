@@ -6,7 +6,7 @@ metadata:
 spec:
   secretName: meta-mcp-tls
   dnsNames:
-    - meta-mcp.dev.crrm.io
+    - social-mcp.dev.crrm.io
   issuerRef:
     kind: ClusterIssuer
     name: dns-issuer

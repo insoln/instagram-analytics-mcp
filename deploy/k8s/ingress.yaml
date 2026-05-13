@@ -9,7 +9,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-    - host: meta-mcp.dev.crrm.io
+    - host: social-mcp.dev.crrm.io
       http:
         paths:
           - path: /
@@ -21,5 +21,5 @@ spec:
                   number: 3000
   tls:
     - hosts:
-        - meta-mcp.dev.crrm.io
-      secretName: meta-mcp-tls
+        - social-mcp.dev.crrm.io
+      secretName: crrm-io-tls

@@ -5,7 +5,7 @@ metadata:
   namespace: meta-mcp
 data:
   MCP_MODE: "http-oauth"
-  SERVER_URL: "https://meta-mcp.dev.crrm.io"
+  SERVER_URL: "https://social-mcp.dev.crrm.io"
   PORT: "3000"
   HOST: "0.0.0.0"
   META_CALLBACK_PATH: "/auth/meta/callback"
