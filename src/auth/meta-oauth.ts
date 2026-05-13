@@ -51,7 +51,9 @@ export async function exchangeMetaCode(params: {
   appSecret: string;
   redirectUri: string;
 }): Promise<{ accessToken: string; userId: string }> {
-  const response = await metaHttp.get<TokenResponse>(FB_TOKEN_URL, {
+  // Use POST so client_secret and code are sent in the request body rather than
+  // query params, keeping them out of access logs and proxy request URIs.
+  const response = await metaHttp.post<TokenResponse>(FB_TOKEN_URL, null, {
     params: {
       client_id: params.appId,
       client_secret: params.appSecret,
@@ -80,7 +82,7 @@ export async function exchangeForLongLivedToken(params: {
   appSecret: string;
 }): Promise<{ accessToken: string; expiresIn: number }> {
   // Facebook long-lived tokens (~60 days) via fb_exchange_token grant.
-  const response = await metaHttp.get<TokenResponse>(FB_TOKEN_URL, {
+  const response = await metaHttp.post<TokenResponse>(FB_TOKEN_URL, null, {
     params: {
       grant_type: 'fb_exchange_token',
       client_id: params.appId,
@@ -100,7 +102,7 @@ export async function refreshLongLivedToken(params: {
   appSecret: string;
 }): Promise<{ accessToken: string; expiresIn: number }> {
   // Refresh a Facebook long-lived token before it expires by re-exchanging it.
-  const response = await metaHttp.get<TokenResponse>(FB_TOKEN_URL, {
+  const response = await metaHttp.post<TokenResponse>(FB_TOKEN_URL, null, {
     params: {
       grant_type: 'fb_exchange_token',
       client_id: params.appId,

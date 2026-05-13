@@ -39,6 +39,7 @@ export async function initJwtKeys(privateKeyJwkJson?: string): Promise<void> {
   }
 }
 
+/** @param params.expiresIn jose time-span string, e.g. "1h", "30m", "7d". Must match /^\d+[smhd]$/. */
 export async function signAccessToken(params: {
   subject: string;
   audience: string;

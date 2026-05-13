@@ -188,11 +188,13 @@ export class MetaOAuthProvider implements OAuthServerProvider {
     client: OAuthClientInformationFull,
     request: OAuthTokenRevocationRequest
   ): Promise<void> {
-    if (request.token_type_hint === 'refresh_token') {
-      const stored = await this.store.getRefreshToken(request.token);
-      if (stored && stored.clientId === client.client_id) {
-        await this.store.deleteRefreshToken(request.token);
-      }
+    // Access tokens are stateless JWTs and cannot be revoked. For any hint (or
+    // none), attempt to revoke as a refresh token — per RFC 7009 §2.1, the hint
+    // is advisory only, so we must try regardless of its value.
+    // RFC 7009 §2.2 requires HTTP 200 whether or not the token was found.
+    const stored = await this.store.getRefreshToken(request.token);
+    if (stored && stored.clientId === client.client_id) {
+      await this.store.deleteRefreshToken(request.token);
     }
   }
 

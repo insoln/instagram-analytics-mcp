@@ -213,6 +213,8 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     // In http-oauth mode, verify the JWT subject matches the session's recorded
     // subject on every request. Prevents session hijacking where a valid JWT
     // from user B is combined with a leaked session ID from user A.
+    // authHolder is only updated in http-oauth; http-static has no per-request
+    // identity binding (the static token is a shared secret, not per-user).
     if (entry && cfg.mode === 'http-oauth' && req.auth) {
       if (req.auth.clientId !== entry.authHolder.current?.clientId) {
         res.status(401)

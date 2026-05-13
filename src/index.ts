@@ -39,6 +39,9 @@ export type { FacebookConfig } from './platforms/facebook/types.js';
 // `{ server }` from the previous version. The Server instance is created
 // lazily on first property access (no side effects at import time).
 // env vars must be set before first access; call server.connect(transport) to start.
+// Note: the Proxy target is Object.create(Server.prototype) — an empty placeholder.
+// Object.assign / spread / JSON.stringify on this export will return an empty object.
+// Always interact with `server` through its methods, not by inspecting its properties.
 let _server: Server | undefined;
 function _getInstance(): Server { return (_server ??= createServer()); }
 export const server: Server = new Proxy(Object.create(Server.prototype) as Server, {
