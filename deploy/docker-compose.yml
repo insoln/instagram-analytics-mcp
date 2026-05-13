@@ -2,7 +2,11 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --appendonly yes --loglevel warning
+    command: >
+      redis-server
+      --appendonly yes
+      --loglevel warning
+      --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     healthcheck:
@@ -23,9 +27,11 @@ services:
     environment:
       SESSION_STORE: redis
       REDIS_URL: redis://redis:6379
-      # TOKEN_ENCRYPTION_KEY must be set in ../.env or exported in the shell.
-      # Generate with: openssl rand -hex 32
+      # TOKEN_ENCRYPTION_KEY and REDIS_PASSWORD must be in ../.env or the shell.
+      # TOKEN_ENCRYPTION_KEY: openssl rand -hex 32
+      # REDIS_PASSWORD: openssl rand -base64 24
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
     depends_on:
       redis:
         condition: service_healthy

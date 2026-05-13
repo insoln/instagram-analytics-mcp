@@ -21,7 +21,7 @@ spec:
       serviceAccountName: meta-mcp
       imagePullSecrets:
         - name: image-pull-secret
-      terminationGracePeriodSeconds: 30
+      terminationGracePeriodSeconds: 15
       containers:
         - name: meta-mcp
           # Update the tag on each deploy, e.g. ghcr.io/careerum/meta-mcp:v3.1.0

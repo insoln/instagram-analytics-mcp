@@ -13,3 +13,6 @@ resources:
   - certificate.yaml
   - ingress.yaml
   # - hpa.yaml  # uncomment to enable horizontal autoscaling
+
+# secret.example.yaml is documentation only — create the secret manually:
+# kubectl -n meta-mcp create secret generic meta-mcp --from-literal=... (see secret.example.yaml)

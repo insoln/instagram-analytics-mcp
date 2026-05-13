@@ -11,4 +11,3 @@ data:
   META_CALLBACK_PATH: "/auth/meta/callback"
   JWT_EXPIRY: "1h"
   SESSION_STORE: "redis"
-  REDIS_URL: "redis://redis:6379"

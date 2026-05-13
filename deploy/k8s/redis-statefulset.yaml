@@ -17,7 +17,20 @@ spec:
       containers:
         - name: redis
           image: redis:7-alpine
-          command: ["redis-server", "--appendonly", "yes", "--loglevel", "warning"]
+          command:
+            - redis-server
+            - --appendonly
+            - "yes"
+            - --loglevel
+            - warning
+            - --requirepass
+            - $(REDIS_PASSWORD)
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: meta-mcp
+                  key: REDIS_PASSWORD
           ports:
             - containerPort: 6379
           resources:
@@ -29,7 +42,12 @@ spec:
               memory: 256Mi
           livenessProbe:
             exec:
-              command: ["redis-cli", "ping"]
+              command: ["redis-cli", "-a", "$(REDIS_PASSWORD)", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "-a", "$(REDIS_PASSWORD)", "ping"]
             initialDelaySeconds: 5
             periodSeconds: 10
           volumeMounts:
