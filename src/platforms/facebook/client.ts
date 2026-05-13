@@ -181,7 +181,9 @@ export class FacebookClient {
         // Fetch directly and store the result ourselves.
         const freshToken = await this.fetchPageToken(pageId, userToken, apiVersion);
         this.storeCachedToken(pageTokenCacheKey(pageId, userToken), freshToken);
-        return fn(freshToken);
+        // `return await` is intentional: inside a try/catch, awaiting ensures any
+        // synchronous throw from fn is caught here rather than escaping the block.
+        return await fn(freshToken);
       }
       throw err;
     }
