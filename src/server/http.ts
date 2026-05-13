@@ -319,8 +319,12 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     app.delete('/mcp', staticMiddleware, handleMcp);
   }
 
+  let isShuttingDown = false;
   app.get('/healthz', (_req: Request, res: Response) => res.json({ status: 'ok' }));
-  app.get('/readyz', (_req: Request, res: Response) => res.json({ status: 'ok' }));
+  app.get('/readyz', (_req: Request, res: Response) => {
+    if (isShuttingDown) { res.status(503).json({ status: 'shutting_down' }); return; }
+    res.json({ status: 'ok' });
+  });
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     logger.error('Unhandled HTTP error', err);
@@ -336,6 +340,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
   });
 
   function shutdown(): Promise<void> {
+    isShuttingDown = true;
     logger.info('Shutting down HTTP server...');
     clearInterval(sessionSweepTimer);
     store.stopSweep?.();

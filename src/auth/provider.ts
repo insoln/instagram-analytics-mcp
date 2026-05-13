@@ -213,17 +213,18 @@ export class MetaOAuthProvider implements OAuthServerProvider {
     const stateRecord = await this.store.getOAuthState(state);
     if (!stateRecord) throw new Error('OAuth state not found or expired');
 
-    // exchangeMetaCode consumes the Meta authorization code on Meta's side.
-    // Once this succeeds the state cannot be meaningfully retried (Meta will
-    // reject the already-spent code), so always delete it in the finally block.
-    const { accessToken: shortToken, userId } = await exchangeMetaCode({
-      code,
-      appId: this.opts.metaAppId,
-      appSecret: this.opts.metaAppSecret,
-      redirectUri: this.opts.metaCallbackUri,
-    });
-
+    // Delete the OAuth state in a finally block regardless of outcome.
+    // Once exchangeMetaCode is called, the Meta code is consumed and the state
+    // cannot be meaningfully retried — Meta will reject the already-spent code.
+    // If exchangeMetaCode itself fails, the state is also cleaned up so stale
+    // records don't accumulate.
     try {
+      const { accessToken: shortToken, userId } = await exchangeMetaCode({
+        code,
+        appId: this.opts.metaAppId,
+        appSecret: this.opts.metaAppSecret,
+        redirectUri: this.opts.metaCallbackUri,
+      });
       const { accessToken: longToken, expiresIn } = await exchangeForLongLivedToken({
         shortLivedToken: shortToken,
         appId: this.opts.metaAppId,

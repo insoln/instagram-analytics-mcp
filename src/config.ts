@@ -35,8 +35,8 @@ const ConfigSchema = z
     metaAppSecret: z.string().optional(),
     metaCallbackPath: z.string()
       .refine(
-        (p) => !p.includes('://') && !p.includes('?') && !p.includes('#'),
-        'META_CALLBACK_PATH must be a plain path (e.g. /auth/callback) — no scheme, query string, or fragment'
+        (p) => !p.includes('://') && !p.includes('?') && !p.includes('#') && !p.includes('..'),
+        'META_CALLBACK_PATH must be a plain path (e.g. /auth/callback) — no scheme, query string, fragment, or ".." segments'
       )
       .transform((p) => p.startsWith('/') ? p : `/${p}`)
       .default('/auth/meta/callback'),
