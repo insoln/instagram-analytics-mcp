@@ -5,8 +5,12 @@ const metaHttp = axios.create({ timeout: 10_000 });
 // Facebook Login endpoints — issues Facebook Graph API tokens compatible with
 // graph.facebook.com. Clients (InstagramClient, FacebookClient) require Graph
 // API tokens, not Instagram Login (api.instagram.com) tokens.
-// Keep FB_OAUTH_API_VERSION in sync with the default Graph API version used by
-// the platform clients (INSTAGRAM_API_VERSION / FACEBOOK_API_VERSION defaults).
+//
+// FB_OAUTH_API_VERSION is intentionally fixed and not configurable via
+// INSTAGRAM_API_VERSION / FACEBOOK_API_VERSION: the OAuth token-exchange
+// endpoints are Meta infrastructure, not the Graph API data endpoints, and
+// their version rarely changes independently. Keep it in sync with the default
+// Graph API version used by the platform clients when upgrading.
 const FB_OAUTH_API_VERSION = 'v23.0';
 const FB_AUTHORIZE_URL = 'https://www.facebook.com/dialog/oauth';
 const FB_TOKEN_URL = `https://graph.facebook.com/${FB_OAUTH_API_VERSION}/oauth/access_token`;

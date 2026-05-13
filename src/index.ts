@@ -62,8 +62,12 @@ export const server: Server = new Proxy(Object.create(Server.prototype) as Serve
  * Returns an unconnected Server; call server.connect(transport) to start it.
  * Preserved for backward compatibility with programmatic usage.
  *
- * Does NOT call dotenv.config(). The CLI entry point handles env loading via
- * loadConfig(). Programmatic callers must set env vars themselves before calling.
+ * **Breaking change from v2**: does NOT call dotenv.config() anymore.
+ * Previous versions loaded .env at module init; programmatic consumers who
+ * relied on a local .env file must now call dotenv.config() (or equivalent)
+ * before importing this module, or set the env vars themselves.
+ * The CLI entry point handles env loading via loadConfig() — this only
+ * affects programmatic / library usage.
  */
 export function createServer() {
   const instagramAccessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
@@ -147,7 +151,9 @@ async function runHttpServer(config: ReturnType<typeof loadConfig>): Promise<voi
 
   const shutdown = await startHttpServer(config, store);
   const handleSignal = () => {
-    shutdown().then(() => process.exit(0)).catch(() => process.exit(1));
+    shutdown()
+      .then(() => process.exit(0))
+      .catch((err) => { logger.error('Error during shutdown', err); process.exit(1); });
   };
   process.once('SIGTERM', handleSignal);
   process.once('SIGINT', handleSignal);
