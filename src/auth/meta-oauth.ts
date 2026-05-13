@@ -51,16 +51,14 @@ export async function exchangeMetaCode(params: {
   appSecret: string;
   redirectUri: string;
 }): Promise<{ accessToken: string; userId: string }> {
-  // Use POST so client_secret and code are sent in the request body rather than
-  // query params, keeping them out of access logs and proxy request URIs.
-  const response = await metaHttp.post<TokenResponse>(FB_TOKEN_URL, null, {
-    params: {
-      client_id: params.appId,
-      client_secret: params.appSecret,
-      redirect_uri: params.redirectUri,
-      code: params.code,
-    },
-  });
+  // Send as application/x-www-form-urlencoded body so client_secret and code
+  // stay out of the URL, access logs, and proxy request URIs.
+  const response = await metaHttp.post<TokenResponse>(FB_TOKEN_URL, new URLSearchParams({
+    client_id: params.appId,
+    client_secret: params.appSecret,
+    redirect_uri: params.redirectUri,
+    code: params.code,
+  }));
 
   const { access_token } = response.data;
   if (!access_token) throw new Error('No access_token in Facebook token response');
@@ -82,14 +80,12 @@ export async function exchangeForLongLivedToken(params: {
   appSecret: string;
 }): Promise<{ accessToken: string; expiresIn: number }> {
   // Facebook long-lived tokens (~60 days) via fb_exchange_token grant.
-  const response = await metaHttp.post<TokenResponse>(FB_TOKEN_URL, null, {
-    params: {
-      grant_type: 'fb_exchange_token',
-      client_id: params.appId,
-      client_secret: params.appSecret,
-      fb_exchange_token: params.shortLivedToken,
-    },
-  });
+  const response = await metaHttp.post<TokenResponse>(FB_TOKEN_URL, new URLSearchParams({
+    grant_type: 'fb_exchange_token',
+    client_id: params.appId,
+    client_secret: params.appSecret,
+    fb_exchange_token: params.shortLivedToken,
+  }));
 
   const { access_token, expires_in } = response.data;
   if (!access_token) throw new Error('No access_token in long-lived token response');
@@ -102,14 +98,12 @@ export async function refreshLongLivedToken(params: {
   appSecret: string;
 }): Promise<{ accessToken: string; expiresIn: number }> {
   // Refresh a Facebook long-lived token before it expires by re-exchanging it.
-  const response = await metaHttp.post<TokenResponse>(FB_TOKEN_URL, null, {
-    params: {
-      grant_type: 'fb_exchange_token',
-      client_id: params.appId,
-      client_secret: params.appSecret,
-      fb_exchange_token: params.accessToken,
-    },
-  });
+  const response = await metaHttp.post<TokenResponse>(FB_TOKEN_URL, new URLSearchParams({
+    grant_type: 'fb_exchange_token',
+    client_id: params.appId,
+    client_secret: params.appSecret,
+    fb_exchange_token: params.accessToken,
+  }));
 
   const { access_token, expires_in } = response.data;
   if (!access_token) throw new Error('No access_token in token refresh response');
