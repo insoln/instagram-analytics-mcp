@@ -151,6 +151,16 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       });
 
       try {
+        // Enforce OAuth scopes in http-oauth mode before doing any work.
+        if (cfg.mode === 'http-oauth' && authInfo) {
+          const requiredScope = name.startsWith('instagram_') ? 'instagram'
+            : name.startsWith('facebook_') ? 'facebook'
+            : null;
+          if (requiredScope && !authInfo.scopes.includes(requiredScope)) {
+            return formatError(new Error(`Insufficient scope: '${requiredScope}' required to call ${name}`));
+          }
+        }
+
         if (!cachedContext || cfg.mode === 'http-oauth') {
           cachedContext = await resolveContext(authInfo, cfg, store);
         }
