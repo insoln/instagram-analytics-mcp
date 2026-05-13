@@ -46,16 +46,10 @@ const ConfigSchema = z
 
   })
   .superRefine((data, ctx) => {
-    if (data.mode === 'http-static') {
-      const isLoopback = data.host && ['localhost', '127.0.0.1', '::1'].includes(data.host);
-      if (!isLoopback && !data.serverUrl) {
-        ctx.addIssue({
-          code: 'custom',
-          message: `SERVER_URL is required in http-static mode when HOST is not a loopback address (currently "${data.host ?? '0.0.0.0'}"). Set SERVER_URL to declare the external URL, or set HOST to "localhost" for local-only access.`,
-          path: ['serverUrl'],
-        });
-      }
-    }
+    // http-static: SERVER_URL is optional. When omitted the server falls back to
+    // localhost-only allowedHosts (DNS-rebinding protection still active, but
+    // external clients that send a non-loopback Host header will be rejected).
+    // Users who need external access must set SERVER_URL explicitly.
     if (data.mode === 'http-oauth') {
       if (!data.serverUrl) {
         ctx.addIssue({ code: 'custom', message: 'SERVER_URL is required in http-oauth mode', path: ['serverUrl'] });

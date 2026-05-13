@@ -136,8 +136,9 @@ export class MetaOAuthProvider implements OAuthServerProvider {
     const record = await this.store.getMcpCode(authorizationCode);
     if (!record) throw new Error('Authorization code not found or expired');
     if (record.clientId !== client.client_id) throw new Error('Authorization code was not issued to this client');
-    // Validate redirect_uri if provided — OAuth 2.1 §4.1.3 requires it to match the authorization request.
-    if (redirectUri && redirectUri !== record.redirectUri) throw new Error('redirect_uri mismatch');
+    // OAuth 2.1 §4.1.3: redirect_uri is always required when included in the
+    // authorization request (McpCodeRecord always stores it), and must match exactly.
+    if (!redirectUri || redirectUri !== record.redirectUri) throw new Error('redirect_uri is required and must match the authorization request');
     // Validate resource audience if provided.
     if (resource && record.resource && resource.toString() !== record.resource) throw new Error('resource mismatch');
     // Issue tokens before deleting the code so transient failures (JWT signing,
