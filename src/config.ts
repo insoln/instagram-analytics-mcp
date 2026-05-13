@@ -102,8 +102,8 @@ function load(): Config {
   // (SERVER_URL origin check, JWT_EXPIRY regex, port coercion, etc.) never
   // throw on unrelated env vars present in generic deployment environments.
   // Keys that are only meaningful in http-oauth mode.
-  // serverUrl is intentionally kept in http-static so the superRefine host-binding
-  // check can require it when the server binds to a non-loopback address.
+  // serverUrl is intentionally kept in http-static (not in OAUTH_ONLY_KEYS) so
+  // that an explicitly configured SERVER_URL is used for allowedHosts validation.
   const OAUTH_ONLY_KEYS = ['metaAppId', 'metaAppSecret', 'metaCallbackPath',
     'jwtPrivateKeyJwk', 'jwtExpiry', 'refreshTokenExpirySeconds'];
   if (mode === 'stdio-static') {

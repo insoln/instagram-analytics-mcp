@@ -295,13 +295,13 @@ export class MetaOAuthProvider implements OAuthServerProvider {
 
 function parseExpiryToSeconds(expiry: string): number {
   const match = expiry.match(/^(\d+)([smhd])$/);
-  if (!match) return 3600;
+  if (!match) throw new Error(`Invalid expiry format "${expiry}". Expected a number followed by s, m, h, or d (e.g. "1h").`);
   const n = parseInt(match[1], 10);
   switch (match[2]) {
     case 's': return n;
     case 'm': return n * 60;
     case 'h': return n * 3600;
     case 'd': return n * 86400;
-    default: return 3600;
+    default: throw new Error(`Unrecognised expiry unit "${match[2]}"`);
   }
 }

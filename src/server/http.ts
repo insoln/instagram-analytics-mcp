@@ -347,6 +347,11 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     // Close all active MCP session transports so in-flight connections are not
     // left open after the HTTP listener stops accepting new requests.
     for (const [id, entry] of [...sessions]) closeAndDelete(id, entry);
+    // Release idle keep-alive connections so the server can close promptly.
+    // closeIdleConnections() (Node 18.2+) lets in-flight requests complete
+    // while immediately releasing idle sockets that would otherwise hold the
+    // process alive until the 10 s force-timeout fires.
+    httpServer.closeIdleConnections?.();
     return new Promise((resolve, reject) => {
       const forceTimeout = setTimeout(() => reject(new Error('Server shutdown timed out after 10s')), 10_000);
       httpServer.close((err) => {
