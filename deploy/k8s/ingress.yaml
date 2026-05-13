@@ -4,7 +4,6 @@ metadata:
   name: meta-mcp
   namespace: meta-mcp
   annotations:
-    kubernetes.io/ingress.class: nginx
     nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
 spec:

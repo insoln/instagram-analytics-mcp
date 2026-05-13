@@ -36,7 +36,7 @@ export class RedisSessionStore implements SessionStore {
       throw new Error('TOKEN_ENCRYPTION_KEY must be a 64-character hex string (32 bytes)');
     }
     this.encKey = Buffer.from(encryptionKeyHex, 'hex');
-    this.redis = new Redis(redisUrl, { enableOfflineQueue: false });
+    this.redis = new Redis(redisUrl);
   }
 
   async ping(): Promise<void> {
