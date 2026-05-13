@@ -31,7 +31,7 @@ const GRAPH_API_BASE_URL = 'https://graph.facebook.com';
 const DEFAULT_API_VERSION = 'v22.0';
 const DEFAULT_POST_FIELDS = 'message,created_time,permalink_url';
 
-// Metrics verified against Graph API v22+ with read_insights + pages_read_engagement permissions.
+// Metrics verified against Graph API v23+ with read_insights + pages_read_engagement permissions.
 // The following were deprecated by Meta and are no longer accepted regardless of permissions:
 // page_impressions, page_engaged_users, page_fans, page_fan_adds_unique.
 const KNOWN_PAGE_METRICS: KnownMetric[] = [
