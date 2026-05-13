@@ -1,14 +1,13 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes, type CipherGCMTypes } from 'node:crypto';
 import { Redis } from 'ioredis';
 import type { SessionStore } from './store.js';
 import type { McpCodeRecord, OAuthStateRecord, SessionRecord } from './types.js';
 
-const ALGO = 'aes-256-gcm' as const;
-const IV_BYTES = 12;  // 96-bit IV (GCM standard)
-const TAG_BYTES = 16;
+const ALGO: CipherGCMTypes = 'aes-256-gcm';
+const IV_BYTES = 12;
 
-const TTL_SESSION_MAX_S = 60 * 24 * 60 * 60;  // 60 days hard cap
-const TTL_SESSION_GRACE_S = 7 * 24 * 60 * 60; // 7-day grace after token expiry
+const TTL_SESSION_MAX_S = 60 * 24 * 60 * 60;
+const TTL_SESSION_GRACE_S = 7 * 24 * 60 * 60;
 const TTL_OAUTH_STATE_S = 10 * 60;
 const TTL_MCP_CODE_S = 5 * 60;
 const TTL_REFRESH_TOKEN_MAX_S = 30 * 24 * 60 * 60;
@@ -19,13 +18,17 @@ function redisKey(type: 'sess' | 'ostate' | 'mcpcode' | 'rtoken', id: string): s
   return `${KEY_PREFIX}:${type}:${id}`;
 }
 
+function clampTtl(expiresAtMs: number, maxS: number): number {
+  return Math.min(Math.max(1, Math.ceil((expiresAtMs - Date.now()) / 1000)), maxS);
+}
+
 export class RedisSessionStore implements SessionStore {
   private readonly redis: InstanceType<typeof Redis>;
   private readonly encKey: Buffer;
 
   /**
    * @param redisUrl  ioredis connection URL, e.g. "redis://localhost:6379"
-   * @param encryptionKeyHex  32-byte AES-256-GCM key encoded as 64 lowercase hex chars.
+   * @param encryptionKeyHex  32-byte AES-256-GCM key as 64 hex chars.
    *   Required: Meta access tokens must never be stored in plaintext.
    */
   constructor(redisUrl: string, encryptionKeyHex: string) {
@@ -44,13 +47,11 @@ export class RedisSessionStore implements SessionStore {
     await this.redis.quit();
   }
 
-  // --- Encryption helpers ---------------------------------------------------
-
   private encrypt(plaintext: string): string {
     const iv = randomBytes(IV_BYTES);
     const cipher = createCipheriv(ALGO, this.encKey, iv);
     const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const tag = (cipher as ReturnType<typeof createCipheriv> & { getAuthTag(): Buffer }).getAuthTag();
+    const tag = cipher.getAuthTag();
     return `${iv.toString('hex')}:${tag.toString('hex')}:${ciphertext.toString('hex')}`;
   }
 
@@ -59,18 +60,12 @@ export class RedisSessionStore implements SessionStore {
     if (parts.length !== 3) throw new Error('Encrypted value has unexpected format');
     const [ivHex, tagHex, ctHex] = parts;
     const decipher = createDecipheriv(ALGO, this.encKey, Buffer.from(ivHex, 'hex'));
-    (decipher as ReturnType<typeof createDecipheriv> & { setAuthTag(tag: Buffer): void })
-      .setAuthTag(Buffer.from(tagHex, 'hex'));
-    return (
-      decipher.update(Buffer.from(ctHex, 'hex'), undefined, 'utf8') +
-      decipher.final('utf8')
-    );
+    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+    return decipher.update(Buffer.from(ctHex, 'hex'), undefined, 'utf8') + decipher.final('utf8');
   }
 
   private ser<T>(value: T): string { return this.encrypt(JSON.stringify(value)); }
   private de<T>(stored: string): T { return JSON.parse(this.decrypt(stored)) as T; }
-
-  // --- SessionStore impl ----------------------------------------------------
 
   async getSession(subject: string): Promise<SessionRecord | undefined> {
     const raw = await this.redis.get(redisKey('sess', subject));
@@ -78,11 +73,7 @@ export class RedisSessionStore implements SessionStore {
   }
 
   async setSession(subject: string, record: SessionRecord): Promise<void> {
-    const graceExpiry = record.metaTokenExpiresAt + TTL_SESSION_GRACE_S * 1000;
-    const ttlS = Math.min(
-      Math.max(1, Math.ceil((graceExpiry - Date.now()) / 1000)),
-      TTL_SESSION_MAX_S,
-    );
+    const ttlS = clampTtl(record.metaTokenExpiresAt + TTL_SESSION_GRACE_S * 1000, TTL_SESSION_MAX_S);
     await this.redis.setex(redisKey('sess', subject), ttlS, this.ser(record));
   }
 
@@ -122,11 +113,7 @@ export class RedisSessionStore implements SessionStore {
   }
 
   async setRefreshToken(token: string, subject: string, clientId: string, scopes: string[], expiresAt: number): Promise<void> {
-    const ttlS = Math.min(
-      Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000)),
-      TTL_REFRESH_TOKEN_MAX_S,
-    );
-    await this.redis.setex(redisKey('rtoken', token), ttlS, this.ser({ subject, clientId, scopes }));
+    await this.redis.setex(redisKey('rtoken', token), clampTtl(expiresAt, TTL_REFRESH_TOKEN_MAX_S), this.ser({ subject, clientId, scopes }));
   }
 
   async deleteRefreshToken(token: string): Promise<void> {

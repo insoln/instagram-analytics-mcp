@@ -5,6 +5,8 @@
 import { InstagramClient } from './platforms/instagram/client.js';
 import { FacebookClient } from './platforms/facebook/client.js';
 
+const DEMOGRAPHIC_METRICS = ['engaged_audience_demographics', 'follower_demographics'];
+
 export async function handleInstagramTool(
   toolName: string,
   args: Record<string, unknown>,
@@ -46,7 +48,6 @@ export async function handleInstagramTool(
         const msg = err instanceof Error ? err.message : String(err);
         // Meta error 100: period/metric incompatibility — surface actionable hint
         if (msg.includes('incompatible') && msg.includes('period')) {
-          const DEMOGRAPHIC_METRICS = ['engaged_audience_demographics', 'follower_demographics'];
           const hasDemographic = metrics.some((m) => DEMOGRAPHIC_METRICS.includes(m));
           const hint = hasDemographic
             ? 'Demographic metrics (engaged_audience_demographics, follower_demographics) require period: "lifetime".'
