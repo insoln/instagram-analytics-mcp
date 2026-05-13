@@ -39,7 +39,9 @@ const SESSION_TRANSPORT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 interface TransportEntry {
   transport: StreamableHTTPServerTransport;
   server: Server;
-  authInfo: AuthInfo | undefined;
+  // Mutable holder updated with req.auth before every dispatch so scope
+  // enforcement inside the MCP handler always sees the current token's scopes.
+  authHolder: { current: AuthInfo | undefined };
   createdAt: number;
 }
 
@@ -124,10 +126,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
   // periodically instead of on every new session creation.
   const sessionSweepTimer = setInterval(sweepSessions, 5 * 60 * 1000).unref();
 
-  // authInfo is captured at session creation time (from the initialize request)
-  // and stored in the session entry so all subsequent requests in the same
-  // session use the same identity without touching private transport internals.
-  function buildMcpServer(authInfo: AuthInfo | undefined): Server {
+  function buildMcpServer(authHolder: { current: AuthInfo | undefined }): Server {
     const server = new Server({ name: 'social-analytics-mcp', version: VERSION }, { capabilities: { tools: {}, prompts: {} } });
 
     // Cache per-session context for static modes (token is fixed for the session
@@ -155,9 +154,9 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       });
 
       try {
-        // Enforce OAuth scopes in http-oauth mode before doing any work.
-        // authInfo is captured at session creation; scopes reflect the original
-        // JWT grant and are preserved unchanged across token refreshes.
+        // Enforce OAuth scopes using authHolder.current — updated from req.auth
+        // before every dispatch, so we always check the presented token's scopes.
+        const authInfo = authHolder.current;
         if (cfg.mode === 'http-oauth' && authInfo) {
           const requiredScope = name.startsWith('instagram_') ? 'instagram'
             : name.startsWith('facebook_') ? 'facebook'
@@ -208,12 +207,14 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     // subject on every request. Prevents session hijacking where a valid JWT
     // from user B is combined with a leaked session ID from user A.
     if (entry && cfg.mode === 'http-oauth' && req.auth) {
-      if (req.auth.clientId !== entry.authInfo?.clientId) {
+      if (req.auth.clientId !== entry.authHolder.current?.clientId) {
         res.status(401)
           .set('WWW-Authenticate', 'Bearer error="invalid_token", error_description="Session does not belong to the authenticated user"')
           .json({ error: 'Session does not belong to the authenticated user' });
         return;
       }
+      // Update holder so the MCP handler sees the current request's token scopes.
+      entry.authHolder.current = req.auth;
     }
 
     if (!entry) {
@@ -233,19 +234,21 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       const allowedHosts = isLocal
         ? [canonicalHost, 'localhost', '127.0.0.1']
         : [canonicalHost];
-      const authInfo: AuthInfo | undefined = req.auth;
+      // authHolder is a mutable slot updated with req.auth before every dispatch
+      // so the MCP handler always enforces the presented token's scopes.
+      const authHolder: { current: AuthInfo | undefined } = { current: req.auth };
 
       // Declare server before transport so the onsessioninitialized closure
       // captures an already-assigned binding (avoids TDZ if the callback were
       // ever invoked before connect() in a future refactor).
-      const server = buildMcpServer(authInfo);
+      const server = buildMcpServer(authHolder);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
           if (sessions.size >= SESSION_TRANSPORT_MAX) {
             sessions.delete(sessions.keys().next().value!);
           }
-          sessions.set(id, { transport, server, authInfo, createdAt: Date.now() });
+          sessions.set(id, { transport, server, authHolder, createdAt: Date.now() });
           logger.debug('MCP session initialized', { sessionId: id });
         },
         onsessionclosed: (id) => {
@@ -256,7 +259,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
         allowedHosts,
       });
 
-      entry = { transport, server, authInfo, createdAt: Date.now() };
+      entry = { transport, server, authHolder, createdAt: Date.now() };
       await server.connect(transport);
     }
 

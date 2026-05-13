@@ -87,11 +87,16 @@ function load(): Config {
   };
 
   const cleaned = Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== undefined && v !== ''));
-  // Strip HTTP-only fields in stdio-static mode so malformed values (e.g. PORT=abc)
-  // don't cause validation failures that are irrelevant to stdio operation.
+  // Strip all HTTP/OAuth-specific fields in stdio-static mode.  Many of these have
+  // strict validators (SERVER_URL origin check, JWT_EXPIRY regex, port coercion)
+  // that would throw on values that are common in generic deployment environments
+  // but irrelevant when running as a stdio server.
   if ((cleaned.mode ?? 'stdio-static') === 'stdio-static') {
-    delete cleaned.port;
-    delete cleaned.host;
+    for (const key of ['port', 'host', 'staticToken', 'serverUrl', 'metaAppId',
+      'metaAppSecret', 'metaCallbackPath', 'jwtPrivateKeyJwk', 'jwtExpiry',
+      'refreshTokenExpirySeconds']) {
+      delete cleaned[key];
+    }
   }
   const result = ConfigSchema.safeParse(cleaned);
 
