@@ -1,8 +1,10 @@
 import type { SessionStore } from './store.js';
 import type { McpCodeRecord, OAuthStateRecord, SessionRecord } from './types.js';
 
-// Sessions whose Meta token expired more than SESSION_GRACE_MS ago are considered
-// permanently stale (token can no longer be refreshed via the 60-day window).
+// SESSION_GRACE_MS is a retention/cleanup grace period: sessions are kept in
+// memory for this long after their Meta token expires before being swept.
+// It does not imply the token is refreshable during that window — expired
+// Meta long-lived tokens generally cannot be re-exchanged.
 const SESSION_MAX = 10_000;
 const SESSION_GRACE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 

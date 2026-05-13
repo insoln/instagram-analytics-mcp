@@ -65,7 +65,7 @@ export const server: Server = new Proxy(Object.create(Server.prototype) as Serve
  * **Breaking change from v2**: does NOT call dotenv.config() anymore.
  * Previous versions loaded .env at module init; programmatic consumers who
  * relied on a local .env file must now call dotenv.config() (or equivalent)
- * before importing this module, or set the env vars themselves.
+ * before calling createServer() or accessing any `server` methods.
  * The CLI entry point handles env loading via loadConfig() — this only
  * affects programmatic / library usage.
  */
@@ -142,7 +142,9 @@ async function runHttpServer(config: ReturnType<typeof loadConfig>): Promise<voi
   const { MemorySessionStore } = await import('./session/memory-store.js');
   const { startHttpServer } = await import('./server/http.js');
 
-  const store = new MemorySessionStore();
+  // Only http-oauth uses the session store (OAuth token storage, code/state maps).
+  // http-static has no OAuth provider so there is no need to run the sweep timer.
+  const store = new MemorySessionStore(config.mode === 'http-oauth' ? undefined : 0);
 
   logger.info(`Social Analytics MCP Server v${VERSION} starting (${config.mode})`, {
     port: config.port,
