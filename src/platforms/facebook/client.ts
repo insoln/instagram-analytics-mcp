@@ -126,7 +126,12 @@ export class FacebookClient {
   }
 
   private invalidatePageToken(pageId: string, userToken: string): void {
-    this.pageTokenCache.delete(pageTokenCacheKey(pageId, userToken));
+    const key = pageTokenCacheKey(pageId, userToken);
+    this.pageTokenCache.delete(key);
+    // Also clear any in-flight fetch so the retry path gets a genuinely fresh
+    // token rather than joining a fetch that was started before the invalidation
+    // and may return the same stale token.
+    this.inFlightFetches.delete(key);
   }
 
   // Single place that writes to pageTokenCache — enforces the eviction guard
@@ -156,10 +161,6 @@ export class FacebookClient {
   // with no specific error_subcode).  More specific subcodes (PERMISSION,
   // numeric Meta subcodes for revoked/expired user tokens) are not retried
   // because a fresh page token will not resolve them.
-  // Note: if multiple coalesced callers all receive the same invalid token and
-  // each enters the retry path, each issues its own fresh fetchPageToken call.
-  // This is an acceptable edge case — the results are correct and the extra
-  // calls are bounded by the number of concurrent waiters (typically very small).
   private async withPageToken<T>(
     pageId: string,
     userToken: string,
@@ -175,12 +176,11 @@ export class FacebookClient {
         err.normalized.code === 'OAUTH' &&
         err.normalized.subcode === 'TOKEN';
       if (isTokenError) {
+        // invalidatePageToken clears both the cache entry and any in-flight fetch
+        // so resolvePageToken below starts (or coalesces on) a genuinely fresh
+        // fetch rather than joining one that may return the same stale token.
         this.invalidatePageToken(pageId, userToken);
-        // Bypass resolvePageToken on the retry path to avoid racing with another
-        // in-flight fetch for the same key that was started after the invalidation.
-        // Fetch directly and store the result ourselves.
-        const freshToken = await this.fetchPageToken(pageId, userToken, apiVersion);
-        this.storeCachedToken(pageTokenCacheKey(pageId, userToken), freshToken);
+        const freshToken = await this.resolvePageToken(pageId, userToken, apiVersion);
         // `return await` is intentional: inside a try/catch, awaiting ensures any
         // synchronous throw from fn is caught here rather than escaping the block.
         return await fn(freshToken);
