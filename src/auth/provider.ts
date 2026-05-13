@@ -186,6 +186,12 @@ export class MetaOAuthProvider implements OAuthServerProvider {
         });
       } catch (err) {
         logger.warn('Failed to refresh Meta token during MCP refresh', { subject: stored.subject, error: String(err) });
+        // If the token is already expired and the refresh failed, issuing new MCP
+        // tokens would succeed but all tool calls would immediately fail with Graph
+        // API auth errors. Reject with invalid_grant so the client re-authenticates.
+        if (Date.now() > session.metaTokenExpiresAt) {
+          throw new Error('Meta access token has expired and could not be refreshed. Please re-authenticate via the OAuth flow.');
+        }
       }
     }
 

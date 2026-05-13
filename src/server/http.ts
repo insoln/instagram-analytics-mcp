@@ -164,7 +164,10 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
         // Enforce OAuth scopes using authHolder.current — updated from req.auth
         // before every dispatch, so we always check the presented token's scopes.
         const authInfo = authHolder.current;
-        if (cfg.mode === 'http-oauth' && authInfo) {
+        if (cfg.mode === 'http-oauth') {
+          // requireBearerAuth guarantees authInfo is set; treat absence as a
+          // misconfiguration and fail closed rather than silently skipping checks.
+          if (!authInfo) return formatError(new Error('Authentication required'));
           const requiredScope = name.startsWith('instagram_') ? 'instagram'
             : name.startsWith('facebook_') ? 'facebook'
             : null;
