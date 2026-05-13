@@ -216,7 +216,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     // authHolder is only updated in http-oauth; http-static has no per-request
     // identity binding (the static token is a shared secret, not per-user).
     if (entry && cfg.mode === 'http-oauth' && req.auth) {
-      if (req.auth.clientId !== entry.authHolder.current!.clientId) {
+      if (!entry.authHolder.current || req.auth.clientId !== entry.authHolder.current.clientId) {
         res.status(401)
           .set('WWW-Authenticate', 'Bearer error="invalid_token", error_description="Session does not belong to the authenticated user"')
           .json({ error: 'Session does not belong to the authenticated user' });
