@@ -87,6 +87,12 @@ function load(): Config {
   };
 
   const cleaned = Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== undefined && v !== ''));
+  // Strip HTTP-only fields in stdio-static mode so malformed values (e.g. PORT=abc)
+  // don't cause validation failures that are irrelevant to stdio operation.
+  if ((cleaned.mode ?? 'stdio-static') === 'stdio-static') {
+    delete cleaned.port;
+    delete cleaned.host;
+  }
   const result = ConfigSchema.safeParse(cleaned);
 
   if (!result.success) {

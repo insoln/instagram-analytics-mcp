@@ -43,7 +43,7 @@ interface TransportEntry {
   createdAt: number;
 }
 
-export async function startHttpServer(cfg: Config, store: SessionStore): Promise<() => void> {
+export async function startHttpServer(cfg: Config, store: SessionStore): Promise<() => Promise<void>> {
   const app = express();
   app.use(express.json());
 
@@ -311,15 +311,18 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     });
   });
 
-  function shutdown() {
+  function shutdown(): Promise<void> {
     logger.info('Shutting down HTTP server...');
     clearInterval(sessionSweepTimer);
     store.stopSweep?.();
-    httpServer.close(() => {
-      logger.info('HTTP server closed');
-      process.exit(0);
+    return new Promise((resolve, reject) => {
+      const forceTimeout = setTimeout(() => reject(new Error('Server shutdown timed out after 10s')), 10_000);
+      httpServer.close((err) => {
+        clearTimeout(forceTimeout);
+        if (err) { logger.error('HTTP server close error', err); reject(err); }
+        else { logger.info('HTTP server closed'); resolve(); }
+      });
     });
-    setTimeout(() => process.exit(1), 10_000);
   }
 
   return shutdown;

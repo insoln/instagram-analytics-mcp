@@ -40,9 +40,18 @@ export type { FacebookConfig } from './platforms/facebook/types.js';
 // lazily on first property access (no side effects at import time).
 // env vars must be set before first access; call server.connect(transport) to start.
 let _server: Server | undefined;
+function _getInstance(): Server { return (_server ??= createServer()); }
 export const server: Server = new Proxy(Object.create(Server.prototype) as Server, {
-  get(_t, p, r) { return Reflect.get((_server ??= createServer()), p, r); },
-  set(_t, p, v) { return Reflect.set((_server ??= createServer()), p, v); },
+  // Use the real instance as both target and receiver so getter properties and
+  // any private-field accesses resolve on Server, not the placeholder target.
+  // Bind functions explicitly for the same reason — method calls must have `this`
+  // pointing to the real instance, not the Proxy.
+  get(_t, p) {
+    const inst = _getInstance();
+    const val = Reflect.get(inst, p, inst);
+    return typeof val === 'function' ? (val as (...a: unknown[]) => unknown).bind(inst) : val;
+  },
+  set(_t, p, v) { const inst = _getInstance(); return Reflect.set(inst, p, v, inst); },
 });
 
 /**
@@ -134,8 +143,11 @@ async function runHttpServer(config: ReturnType<typeof loadConfig>): Promise<voi
   });
 
   const shutdown = await startHttpServer(config, store);
-  process.once('SIGTERM', shutdown);
-  process.once('SIGINT', shutdown);
+  const handleSignal = () => {
+    shutdown().then(() => process.exit(0)).catch(() => process.exit(1));
+  };
+  process.once('SIGTERM', handleSignal);
+  process.once('SIGINT', handleSignal);
 }
 
 // Guard: only connect and listen when invoked directly as the CLI entry point.
