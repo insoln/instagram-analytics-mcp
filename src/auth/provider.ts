@@ -201,9 +201,10 @@ export class MetaOAuthProvider implements OAuthServerProvider {
   async handleMetaCallback(code: string, state: string): Promise<string> {
     const stateRecord = await this.store.getOAuthState(state);
     if (!stateRecord) throw new Error('OAuth state not found or expired');
-    // Do NOT delete OAuth state yet — delete it only after all exchange and
-    // persist operations succeed so the user can retry on transient errors.
 
+    // exchangeMetaCode consumes the Meta authorization code on Meta's side.
+    // Once this succeeds the state cannot be meaningfully retried (Meta will
+    // reject the already-spent code), so always delete it in the finally block.
     const { accessToken: shortToken, userId } = await exchangeMetaCode({
       code,
       appId: this.opts.metaAppId,
@@ -211,38 +212,41 @@ export class MetaOAuthProvider implements OAuthServerProvider {
       redirectUri: this.opts.metaCallbackUri,
     });
 
-    const { accessToken: longToken, expiresIn } = await exchangeForLongLivedToken({
-      shortLivedToken: shortToken,
-      appId: this.opts.metaAppId,
-      appSecret: this.opts.metaAppSecret,
-    });
+    try {
+      const { accessToken: longToken, expiresIn } = await exchangeForLongLivedToken({
+        shortLivedToken: shortToken,
+        appId: this.opts.metaAppId,
+        appSecret: this.opts.metaAppSecret,
+      });
 
-    const subject = `fb_${userId}`;
-    await this.store.setSession(subject, {
-      subject,
-      metaAccessToken: longToken,
-      metaTokenExpiresAt: Date.now() + expiresIn * 1000,
-      fbUserId: userId,
-    });
+      const subject = `fb_${userId}`;
+      await this.store.setSession(subject, {
+        subject,
+        metaAccessToken: longToken,
+        metaTokenExpiresAt: Date.now() + expiresIn * 1000,
+        fbUserId: userId,
+      });
 
-    const mcpCode = randomToken();
-    await this.store.setMcpCode(mcpCode, {
-      subject,
-      codeChallenge: stateRecord.codeChallenge,
-      redirectUri: stateRecord.redirectUri,
-      clientId: stateRecord.clientId,
-      scopes: stateRecord.scopes,
-      resource: stateRecord.resource,
-      expiresAt: Date.now() + CODE_TTL_MS,
-    });
+      const mcpCode = randomToken();
+      await this.store.setMcpCode(mcpCode, {
+        subject,
+        codeChallenge: stateRecord.codeChallenge,
+        redirectUri: stateRecord.redirectUri,
+        clientId: stateRecord.clientId,
+        scopes: stateRecord.scopes,
+        resource: stateRecord.resource,
+        expiresAt: Date.now() + CODE_TTL_MS,
+      });
 
-    // All operations succeeded — consume the state so it cannot be replayed.
-    await this.store.deleteOAuthState(state);
-
-    const redirectUri = new URL(stateRecord.redirectUri);
-    redirectUri.searchParams.set('code', mcpCode);
-    if (stateRecord.clientState) redirectUri.searchParams.set('state', stateRecord.clientState);
-    return redirectUri.toString();
+      const redirectUri = new URL(stateRecord.redirectUri);
+      redirectUri.searchParams.set('code', mcpCode);
+      if (stateRecord.clientState) redirectUri.searchParams.set('state', stateRecord.clientState);
+      return redirectUri.toString();
+    } finally {
+      // Always consume the state — the Meta code is already spent regardless
+      // of whether subsequent operations succeeded.
+      await this.store.deleteOAuthState(state);
+    }
   }
 
   private async issueTokens(subject: string, clientId: string, scopes: string[]): Promise<OAuthTokens> {
