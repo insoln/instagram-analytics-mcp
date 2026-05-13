@@ -33,7 +33,13 @@ const ConfigSchema = z
       .optional(),
     metaAppId: z.string().optional(),
     metaAppSecret: z.string().optional(),
-    metaCallbackPath: z.string().transform((p) => p.startsWith('/') ? p : `/${p}`).default('/auth/meta/callback'),
+    metaCallbackPath: z.string()
+      .refine(
+        (p) => !p.includes('://') && !p.includes('?') && !p.includes('#'),
+        'META_CALLBACK_PATH must be a plain path (e.g. /auth/callback) — no scheme, query string, or fragment'
+      )
+      .transform((p) => p.startsWith('/') ? p : `/${p}`)
+      .default('/auth/meta/callback'),
     jwtPrivateKeyJwk: z.string().optional(),
     jwtExpiry: z.string().regex(/^\d+[smhd]$/, 'JWT_EXPIRY must be a number followed by s, m, h, or d (e.g. "1h", "30m")').default('1h'),
     refreshTokenExpirySeconds: z.coerce.number().int().positive().default(2592000), // 30 days

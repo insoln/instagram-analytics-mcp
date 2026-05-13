@@ -117,9 +117,16 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
 
   const sessions = new Map<string, TransportEntry>();
 
+  function closeAndDelete(id: string, entry: TransportEntry): void {
+    sessions.delete(id);
+    entry.transport.close().catch((err) =>
+      logger.debug('Error closing evicted session transport', { sessionId: id, err: String(err) })
+    );
+  }
+
   function sweepSessions(): void {
     const cutoff = Date.now() - SESSION_TRANSPORT_TTL_MS;
-    for (const [id, entry] of sessions) if (entry.createdAt < cutoff) sessions.delete(id);
+    for (const [id, entry] of sessions) if (entry.createdAt < cutoff) closeAndDelete(id, entry);
   }
 
   // Background sweep mirrors MemorySessionStore's approach — O(n) sweep runs
@@ -199,7 +206,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     // Enforce TTL on every request — the background timer sweeps periodically
     // but a session that slips through between sweeps must still be rejected here.
     if (entry && Date.now() - entry.createdAt > SESSION_TRANSPORT_TTL_MS) {
-      sessions.delete(sessionId!);
+      closeAndDelete(sessionId!, entry);
       entry = undefined;
     }
 
@@ -232,7 +239,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       // set and can undermine DNS rebinding protection.
       const isLocal = ['localhost', '127.0.0.1', '::1'].includes(canonicalHost);
       const allowedHosts = isLocal
-        ? [canonicalHost, 'localhost', '127.0.0.1']
+        ? [canonicalHost, 'localhost', '127.0.0.1', '::1']
         : [canonicalHost];
       // authHolder is a mutable slot updated with req.auth before every dispatch
       // so the MCP handler always enforces the presented token's scopes.
@@ -246,7 +253,8 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
           if (sessions.size >= SESSION_TRANSPORT_MAX) {
-            sessions.delete(sessions.keys().next().value!);
+            const oldestId = sessions.keys().next().value!;
+            closeAndDelete(oldestId, sessions.get(oldestId)!);
           }
           sessions.set(id, { transport, server, authHolder, createdAt: Date.now() });
           logger.debug('MCP session initialized', { sessionId: id });
