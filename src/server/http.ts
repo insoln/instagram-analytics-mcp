@@ -251,9 +251,11 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       // captures an already-assigned binding (avoids TDZ if the callback were
       // ever invoked before connect() in a future refactor).
       const server = buildMcpServer(authHolder);
+      let sessionRegistered = false;
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
+          sessionRegistered = true;
           if (sessions.size >= SESSION_TRANSPORT_MAX) {
             const oldestId = sessions.keys().next().value!;
             closeAndDelete(oldestId, sessions.get(oldestId)!);
@@ -271,10 +273,15 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
 
       entry = { transport, server, authHolder, createdAt: Date.now() };
       await server.connect(transport);
-      // onsessioninitialized stores the entry in `sessions` once the client
-      // completes the initialize handshake. If it never fires (e.g. the
-      // initialize body fails SDK validation), the transport is orphaned.
-      // The entry local is still used below to handle this one request.
+      await entry.transport.handleRequest(req, res, req.body);
+      // If onsessioninitialized never fired (e.g. SDK rejected the initialize
+      // body), the transport was never stored in `sessions` and won't be swept.
+      if (!sessionRegistered) {
+        transport.close().catch((err) =>
+          logger.debug('Error closing unregistered session transport', { err: String(err) })
+        );
+      }
+      return;
     }
 
     await entry!.transport.handleRequest(req, res, req.body);

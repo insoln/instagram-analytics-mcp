@@ -69,6 +69,9 @@ export async function verifyAccessToken(token: string, audience: string, issuer:
   if (!sub) throw new Error('Missing sub claim in JWT');
 
   const scopes = scope ? scope.split(' ').filter(Boolean) : [];
+  // clientId is populated with the JWT `sub` claim, which we set to the session
+  // subject ("fb_<userId>") — the resource owner, not the OAuth client app ID.
+  // Downstream code (context.ts, session hijack check) keys sessions on this value.
   return { token, clientId: sub, scopes };
 }
 

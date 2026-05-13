@@ -141,10 +141,20 @@ export class MetaOAuthProvider implements OAuthServerProvider {
     if (!redirectUri || redirectUri !== record.redirectUri) throw new Error('redirect_uri is required and must match the authorization request');
     // Validate resource audience if provided.
     if (resource && record.resource && resource.toString() !== record.resource) throw new Error('resource mismatch');
-    // Issue tokens before deleting the code so transient failures (JWT signing,
-    // store errors) leave the code intact and allow the client to retry.
+    // Issue tokens before deleting the code so transient JWT/store failures
+    // leave the code intact and allow the client to retry the exchange.
     const tokens = await this.issueTokens(record.subject, client.client_id, record.scopes);
-    await this.store.deleteMcpCode(authorizationCode);
+    // Best-effort delete: if this throws after tokens are issued, the code
+    // remains valid until TTL expiry. Full atomicity requires a transactional
+    // store (PR2/Redis). Log the failure but still return the issued tokens so
+    // the client isn't left with a successful issueTokens and no tokens.
+    try {
+      await this.store.deleteMcpCode(authorizationCode);
+    } catch (err) {
+      logger.warn('Failed to delete MCP authorization code after issuance; it will expire at TTL', {
+        error: String(err),
+      });
+    }
     return tokens;
   }
 
