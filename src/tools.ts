@@ -286,7 +286,7 @@ export const FACEBOOK_TOOLS: Tool[] = [
   },
   {
     name: 'facebook_get_page_insights',
-    description: 'Fetch page-level insights for a Facebook Page. Supported metrics: page_impressions_unique, page_views_total, page_post_engagements, page_actions_post_reactions_total, page_video_views. Use facebook_list_known_metrics to see the full list with valid periods.',
+    description: 'Fetch page-level insights for a Facebook Page. Supported metrics: page_impressions_unique, page_views_total, page_post_engagements, page_video_views. Use facebook_list_known_metrics to see the full list with valid periods.',
     inputSchema: {
       type: 'object',
       required: ['metrics'],

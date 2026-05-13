@@ -145,7 +145,6 @@ Provide a comprehensive analysis including:
    - page_impressions_unique
    - page_views_total
    - page_post_engagements
-   - page_actions_post_reactions_total
    - Use period: ${period} (must be day, week, or days_28 — not lifetime)
 3. Get recent posts with insights using facebook_list_posts_with_insights
    - post_metrics: post_impressions, post_engaged_users, post_clicks

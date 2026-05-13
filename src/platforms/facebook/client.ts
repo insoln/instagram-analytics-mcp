@@ -38,7 +38,6 @@ const KNOWN_PAGE_METRICS: KnownMetric[] = [
   { name: 'page_impressions_unique', periods: ['day', 'week', 'days_28'] },
   { name: 'page_views_total', periods: ['day', 'week', 'days_28'] },
   { name: 'page_post_engagements', periods: ['day', 'week', 'days_28'] },
-  { name: 'page_actions_post_reactions_total', periods: ['day', 'week', 'days_28'], notes: 'Verify period support in Graph API Explorer — Meta may restrict this to specific periods' },
   { name: 'page_video_views', periods: ['day', 'week', 'days_28'], notes: 'Only available for pages with video content' },
 ];
 
