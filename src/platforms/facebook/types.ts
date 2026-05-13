@@ -87,7 +87,6 @@ export interface PageInsightsParams {
 export interface PostInsightsParams {
   postId: string;
   metrics: string[];
-  period?: string;
   apiVersion?: string;
   accessToken?: string;
 }

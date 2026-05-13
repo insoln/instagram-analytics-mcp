@@ -31,20 +31,22 @@ const GRAPH_API_BASE_URL = 'https://graph.facebook.com';
 const DEFAULT_API_VERSION = 'v22.0';
 const DEFAULT_POST_FIELDS = 'message,created_time,permalink_url';
 
+// Metrics verified against Graph API v23+ with read_insights + pages_read_engagement permissions.
+// The following were deprecated by Meta and are no longer accepted regardless of permissions:
+// page_impressions, page_engaged_users, page_fans, page_fan_adds_unique.
 const KNOWN_PAGE_METRICS: KnownMetric[] = [
-  { name: 'page_impressions', periods: ['day', 'week', 'days_28'] },
   { name: 'page_impressions_unique', periods: ['day', 'week', 'days_28'] },
-  { name: 'page_engaged_users', periods: ['day', 'week', 'days_28'] },
-  { name: 'page_post_engagements', periods: ['day', 'week', 'days_28'] },
   { name: 'page_views_total', periods: ['day', 'week', 'days_28'] },
-  { name: 'page_fans', periods: ['day', 'week', 'days_28', 'lifetime'] },
-  { name: 'page_fan_adds_unique', periods: ['day', 'week', 'days_28', 'lifetime'], notes: 'Requires period when not lifetime' },
+  { name: 'page_post_engagements', periods: ['day', 'week', 'days_28'] },
+  { name: 'page_video_views', periods: ['day', 'week', 'days_28'], notes: 'Only available for pages with video content' },
 ];
 
 const KNOWN_POST_METRICS: KnownMetric[] = [
-  { name: 'post_impressions', periods: ['day', 'week', 'days_28'] },
-  { name: 'post_impressions_unique', periods: ['day', 'week', 'days_28'] },
-  { name: 'post_engaged_users', periods: ['day', 'week', 'days_28'] },
+  { name: 'post_impressions', periods: ['lifetime'] },
+  { name: 'post_impressions_unique', periods: ['lifetime'] },
+  { name: 'post_engaged_users', periods: ['lifetime'] },
+  { name: 'post_clicks', periods: ['lifetime'] },
+  { name: 'post_reactions_by_type_total', periods: ['lifetime'] },
 ];
 
 const PAGE_TOKEN_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -256,9 +258,8 @@ export class FacebookClient {
       const query: Record<string, string> = {
         metric: params.metrics.join(','),
         access_token: accessToken,
+        period: 'lifetime', // all KNOWN_POST_METRICS require period=lifetime
       };
-
-      if (params.period) query.period = params.period;
 
       return this.request<InsightsResponse>({
         method: 'GET',
@@ -281,8 +282,9 @@ export class FacebookClient {
     const apiVersion = this.resolveApiVersion(params.apiVersion);
     const userToken = this.resolveAccessToken(params.accessToken);
 
+    // Append .period(lifetime) — all supported post metrics require period=lifetime.
     return this.withPageToken(pageId, userToken, apiVersion, async (accessToken) => {
-      const fields = `${DEFAULT_POST_FIELDS},insights.metric(${params.postMetrics.join(',')})`;
+      const fields = `${DEFAULT_POST_FIELDS},insights.metric(${params.postMetrics.join(',')}).period(lifetime)`;
       const query: Record<string, string> = {
         fields,
         access_token: accessToken,

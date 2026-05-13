@@ -87,6 +87,8 @@ export const PROMPTS: Prompt[] = [
   },
 ];
 
+const VALID_PAGE_PERIODS = new Set(['day', 'week', 'days_28']);
+
 export function getPromptContent(
   name: string,
   args: Record<string, string>
@@ -128,7 +130,8 @@ Provide a comprehensive analysis including:
 
     case 'analyze_facebook_performance': {
       const pageId = args.page_id || 'configured page';
-      const period = args.period || 'days_28';
+      // Page metrics only accept day/week/days_28; fall back to days_28 for any other value.
+      const period = VALID_PAGE_PERIODS.has(args.period) ? args.period : 'days_28';
       return {
         messages: [
           {
@@ -138,15 +141,13 @@ Provide a comprehensive analysis including:
               text: `Analyze Facebook Page performance for ${pageId} over ${period}. Please:
 
 1. First, use facebook_list_pages to verify the page is accessible
-2. Fetch page insights with these metrics:
-   - page_impressions
+2. Fetch page insights with these metrics (use facebook_list_known_metrics to confirm availability):
    - page_impressions_unique
-   - page_engaged_users
-   - page_post_engagements
    - page_views_total
-   - Use period: ${period}
+   - page_post_engagements
+   - Use period: ${period} (must be day, week, or days_28 — not lifetime)
 3. Get recent posts with insights using facebook_list_posts_with_insights
-   - post_metrics: post_impressions, post_engaged_users
+   - post_metrics: post_impressions, post_engaged_users, post_clicks
    - limit: 10
 
 Provide a comprehensive analysis including:

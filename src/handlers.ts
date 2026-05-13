@@ -136,12 +136,10 @@ export async function handleFacebookTool(
     case 'facebook_get_post_insights': {
       const postId = args.post_id as string;
       const metrics = args.metrics as string[];
-      const period = args.period as string | undefined;
 
       return await client.getPostInsights({
         postId,
         metrics,
-        period,
       });
     }
 
