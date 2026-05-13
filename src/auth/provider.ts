@@ -123,6 +123,9 @@ export class MetaOAuthProvider implements OAuthServerProvider {
     const record = await this.store.getMcpCode(authorizationCode);
     if (!record) throw new Error('Authorization code not found or expired');
     if (record.clientId !== client.client_id) throw new Error('Authorization code was not issued to this client');
+    // Defense-in-depth: reject expired codes regardless of whether the store
+    // implementation enforces TTL on reads.
+    if (Date.now() > record.expiresAt) throw new Error('Authorization code has expired');
     return record.codeChallenge;
   }
 

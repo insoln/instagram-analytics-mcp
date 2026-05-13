@@ -68,12 +68,18 @@ export async function exchangeMetaCode(params: {
 }
 
 async function fetchFacebookUserId(accessToken: string): Promise<string> {
+  // Use Authorization header so the token is not appended to the URL and does
+  // not appear in server access logs or proxy request URIs.
   const response = await metaHttp.get<{ id: string }>(FB_ME_URL, {
-    params: { access_token: accessToken, fields: 'id' },
+    headers: { Authorization: `Bearer ${accessToken}` },
+    params: { fields: 'id' },
   });
   return response.data.id;
 }
 
+// Both initial exchange (short-lived → long-lived) and periodic refresh use the
+// same fb_exchange_token grant. refreshLongLivedToken delegates here to avoid
+// duplicating request logic that would otherwise drift independently.
 export async function exchangeForLongLivedToken(params: {
   shortLivedToken: string;
   appId: string;
@@ -97,17 +103,11 @@ export async function refreshLongLivedToken(params: {
   appId: string;
   appSecret: string;
 }): Promise<{ accessToken: string; expiresIn: number }> {
-  // Refresh a Facebook long-lived token before it expires by re-exchanging it.
-  const response = await metaHttp.post<TokenResponse>(FB_TOKEN_URL, new URLSearchParams({
-    grant_type: 'fb_exchange_token',
-    client_id: params.appId,
-    client_secret: params.appSecret,
-    fb_exchange_token: params.accessToken,
-  }));
-
-  const { access_token, expires_in } = response.data;
-  if (!access_token) throw new Error('No access_token in token refresh response');
-  return { accessToken: access_token, expiresIn: expires_in ?? 5183944 };
+  return exchangeForLongLivedToken({
+    shortLivedToken: params.accessToken,
+    appId: params.appId,
+    appSecret: params.appSecret,
+  });
 }
 
 // Returns true if the stored token should be refreshed (within 7 days of expiry)
