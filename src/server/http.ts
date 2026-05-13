@@ -337,8 +337,16 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
 
   let isShuttingDown = false;
   app.get('/healthz', (_req: Request, res: Response) => res.json({ status: 'ok' }));
-  app.get('/readyz', (_req: Request, res: Response) => {
+  app.get('/readyz', async (_req: Request, res: Response) => {
     if (isShuttingDown) { res.status(503).json({ status: 'shutting_down' }); return; }
+    if (store.ping) {
+      try {
+        await store.ping();
+      } catch {
+        res.status(503).json({ status: 'store_unavailable' });
+        return;
+      }
+    }
     res.json({ status: 'ok' });
   });
 
@@ -355,7 +363,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     });
   });
 
-  function shutdown(): Promise<void> {
+  async function shutdown(): Promise<void> {
     isShuttingDown = true;
     logger.info('Shutting down HTTP server...');
     clearInterval(sessionSweepTimer);
@@ -368,7 +376,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     // while immediately releasing idle sockets that would otherwise hold the
     // process alive until the 10 s force-timeout fires.
     httpServer.closeIdleConnections?.();
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const forceTimeout = setTimeout(() => reject(new Error('Server shutdown timed out after 10s')), 10_000);
       httpServer.close((err) => {
         clearTimeout(forceTimeout);
@@ -376,6 +384,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
         else { logger.info('HTTP server closed'); resolve(); }
       });
     });
+    await store.close?.();
   }
 
   return shutdown;

@@ -139,12 +139,21 @@ async function runStdioStatic(): Promise<void> {
 }
 
 async function runHttpServer(config: ReturnType<typeof loadConfig>): Promise<void> {
-  const { MemorySessionStore } = await import('./session/memory-store.js');
   const { startHttpServer } = await import('./server/http.js');
 
-  // Only http-oauth uses the session store (OAuth token storage, code/state maps).
-  // http-static has no OAuth provider so there is no need to run the sweep timer.
-  const store = new MemorySessionStore(config.mode === 'http-oauth' ? undefined : 0);
+  let store: import('./session/store.js').SessionStore;
+  if (config.sessionStore === 'redis') {
+    const { RedisSessionStore } = await import('./session/redis-store.js');
+    store = new RedisSessionStore(config.redisUrl, config.tokenEncryptionKey!);
+    // Fail fast if Redis is unreachable before binding the HTTP port.
+    await store.ping!();
+    logger.info('Redis session store connected', { url: config.redisUrl });
+  } else {
+    const { MemorySessionStore } = await import('./session/memory-store.js');
+    // Only http-oauth uses the session store (OAuth token storage, code/state maps).
+    // http-static has no OAuth provider so there is no need to run the sweep timer.
+    store = new MemorySessionStore(config.mode === 'http-oauth' ? undefined : 0);
+  }
 
   logger.info(`Social Analytics MCP Server v${VERSION} starting (${config.mode})`, {
     port: config.port,

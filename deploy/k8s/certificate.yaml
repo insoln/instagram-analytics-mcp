@@ -1,0 +1,12 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: meta-mcp-tls
+  namespace: meta-mcp
+spec:
+  secretName: meta-mcp-tls
+  dnsNames:
+    - meta-mcp.dev.crrm.io
+  issuerRef:
+    kind: ClusterIssuer
+    name: dns-issuer

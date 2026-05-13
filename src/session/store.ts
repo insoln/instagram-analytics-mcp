@@ -24,4 +24,8 @@ export interface SessionStore {
 
   /** Optional: stop background sweep timers for clean shutdown/testing. */
   stopSweep?(): void;
+  /** Optional: check store connectivity — throws if unavailable. */
+  ping?(): Promise<void>;
+  /** Optional: release underlying connections (e.g. Redis client). */
+  close?(): Promise<void>;
 }
