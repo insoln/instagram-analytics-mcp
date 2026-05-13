@@ -93,16 +93,16 @@ function load(): Config {
   };
 
   const cleaned = Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== undefined && v !== ''));
-  // Strip all HTTP/OAuth-specific fields in stdio-static mode.  Many of these have
-  // strict validators (SERVER_URL origin check, JWT_EXPIRY regex, port coercion)
-  // that would throw on values that are common in generic deployment environments
-  // but irrelevant when running as a stdio server.
-  if ((cleaned.mode ?? 'stdio-static') === 'stdio-static') {
-    for (const key of ['port', 'host', 'staticToken', 'serverUrl', 'metaAppId',
-      'metaAppSecret', 'metaCallbackPath', 'jwtPrivateKeyJwk', 'jwtExpiry',
-      'refreshTokenExpirySeconds']) {
-      delete cleaned[key];
-    }
+  const mode = cleaned.mode ?? 'stdio-static';
+  // Strip fields irrelevant to the resolved mode so strict validators
+  // (SERVER_URL origin check, JWT_EXPIRY regex, port coercion, etc.) never
+  // throw on unrelated env vars present in generic deployment environments.
+  const OAUTH_ONLY_KEYS = ['serverUrl', 'metaAppId', 'metaAppSecret',
+    'metaCallbackPath', 'jwtPrivateKeyJwk', 'jwtExpiry', 'refreshTokenExpirySeconds'];
+  if (mode === 'stdio-static') {
+    for (const key of ['port', 'host', 'staticToken', ...OAUTH_ONLY_KEYS]) delete cleaned[key];
+  } else if (mode === 'http-static') {
+    for (const key of OAUTH_ONLY_KEYS) delete cleaned[key];
   }
   const result = ConfigSchema.safeParse(cleaned);
 

@@ -326,6 +326,9 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     logger.info('Shutting down HTTP server...');
     clearInterval(sessionSweepTimer);
     store.stopSweep?.();
+    // Close all active MCP session transports so in-flight connections are not
+    // left open after the HTTP listener stops accepting new requests.
+    for (const [id, entry] of [...sessions]) closeAndDelete(id, entry);
     return new Promise((resolve, reject) => {
       const forceTimeout = setTimeout(() => reject(new Error('Server shutdown timed out after 10s')), 10_000);
       httpServer.close((err) => {
