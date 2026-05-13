@@ -6,6 +6,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { mcpAuthRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import { requireBearerAuth } from '@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js';
 import type { AuthInfo } from '@modelcontextprotocol/sdk/server/auth/types.js';
+import type { Config } from '../config.js';
 
 // Augment Express Request to include auth info populated by requireBearerAuth.
 declare global {
@@ -15,7 +16,7 @@ declare global {
     }
   }
 }
-import type { Config } from '../config.js';
+
 import type { SessionStore } from '../session/store.js';
 import { MetaOAuthProvider } from '../auth/provider.js';
 import { initJwtKeys, getJwks } from '../auth/jwt.js';
@@ -47,12 +48,15 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
   app.use(express.json());
 
   let provider: MetaOAuthProvider | null = null;
+  // cfg.serverUrl is guaranteed non-null in http-oauth mode by superRefine; declared
+  // here so it can be referenced outside the if block (e.g. resourceMetadataUrl).
+  let serverUrl: string | undefined;
 
   if (cfg.mode === 'http-oauth') {
     // JWT keys are only needed in http-oauth mode; skip in http-static to avoid
     // unnecessary key generation and the ephemeral-key warning.
     await initJwtKeys(cfg.jwtPrivateKeyJwk);
-    const serverUrl = cfg.serverUrl!;
+    serverUrl = cfg.serverUrl!;
     const metaCallbackUri = `${serverUrl}${cfg.metaCallbackPath}`;
     const serverAudience = `${serverUrl}/mcp`;
 
@@ -152,6 +156,8 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
 
       try {
         // Enforce OAuth scopes in http-oauth mode before doing any work.
+        // authInfo is captured at session creation; scopes reflect the original
+        // JWT grant and are preserved unchanged across token refreshes.
         if (cfg.mode === 'http-oauth' && authInfo) {
           const requiredScope = name.startsWith('instagram_') ? 'instagram'
             : name.startsWith('facebook_') ? 'facebook'
@@ -257,9 +263,8 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     await entry!.transport.handleRequest(req, res, req.body);
   }
 
-  // cfg.serverUrl is guaranteed non-null in http-oauth mode by superRefine validation.
-  const resourceMetadataUrl = cfg.mode === 'http-oauth'
-    ? `${cfg.serverUrl!}/.well-known/oauth-protected-resource`
+  const resourceMetadataUrl = serverUrl
+    ? `${serverUrl}/.well-known/oauth-protected-resource`
     : undefined;
 
   if (cfg.mode === 'http-oauth' && provider) {

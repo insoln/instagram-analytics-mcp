@@ -49,9 +49,11 @@ export async function resolveContext(
     };
   }
 
-  // http-oauth: resolve per-session Meta token
+  // http-oauth: resolve per-session Meta token.
+  // requireBearerAuth guarantees auth is set and store is always provided in
+  // http-oauth mode, so this branch is unreachable in normal operation.
   if (!auth || !store) {
-    return { instagramClient: null, facebookClient: null };
+    throw new Error('OAuth session required but auth or session store is missing. This is a server configuration error.');
   }
 
   // auth.clientId is the JWT `sub` claim, which we set to the session subject ("fb_<userId>").
