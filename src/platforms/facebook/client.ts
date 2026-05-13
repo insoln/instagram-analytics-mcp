@@ -56,7 +56,9 @@ interface PageTokenEntry {
 }
 
 function pageTokenCacheKey(pageId: string, userToken: string): string {
-  return createHash('sha256').update(`${pageId}:${userToken}`).digest('hex').slice(0, 32);
+  // Use \0 as separator — it cannot appear in a pageId or token value, avoiding
+  // key collisions between e.g. ("12:3", "token") and ("12", "3:token").
+  return createHash('sha256').update(`${pageId}\0${userToken}`).digest('hex').slice(0, 32);
 }
 
 export class FacebookClient {
@@ -174,6 +176,9 @@ export class FacebookClient {
         err.normalized.subcode === 'TOKEN';
       if (isTokenError) {
         this.invalidatePageToken(pageId, userToken);
+        // Bypass resolvePageToken on the retry path to avoid racing with another
+        // in-flight fetch for the same key that was started after the invalidation.
+        // Fetch directly and store the result ourselves.
         const freshToken = await this.fetchPageToken(pageId, userToken, apiVersion);
         this.storeCachedToken(pageTokenCacheKey(pageId, userToken), freshToken);
         return fn(freshToken);
@@ -225,6 +230,8 @@ export class FacebookClient {
     });
   }
 
+  /** period is always 'lifetime' — all KNOWN_POST_METRICS require it. Custom metrics
+   *  requiring a different period are not supported through this method. */
   async getPostInsights(params: PostInsightsParams): Promise<InsightsResponse> {
     if (!params.postId) {
       throw new FacebookApiError({ code: 'VALIDATION', message: 'post_id is required', raw: null });
