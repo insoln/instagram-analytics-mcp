@@ -6,4 +6,3 @@ dist
 deploy
 docker
 *.md
-tsconfig.json

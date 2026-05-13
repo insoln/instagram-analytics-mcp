@@ -51,7 +51,7 @@ export async function handleInstagramTool(
           const hint = hasDemographic
             ? 'Demographic metrics (engaged_audience_demographics, follower_demographics) require period: "lifetime".'
             : 'Try period: "day" — it is compatible with all non-demographic metrics. "days_28" is incompatible with reach and several others.';
-          throw new Error(`${msg}\n\nHint: ${hint}`);
+          throw new Error(`${msg}\n\nHint: ${hint}`, { cause: err });
         }
         throw err;
       }
