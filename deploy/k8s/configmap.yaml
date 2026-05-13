@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: meta-mcp
+  namespace: meta-mcp
+data:
+  MCP_MODE: "http-oauth"
+  SERVER_URL: "https://social-mcp.dev.crrm.io"
+  PORT: "3000"
+  HOST: "0.0.0.0"
+  META_CALLBACK_PATH: "/auth/meta/callback"
+  JWT_EXPIRY: "1h"
+  SESSION_STORE: "redis"

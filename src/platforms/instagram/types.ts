@@ -137,7 +137,7 @@ export type AccountMetric =
   | 'profile_links_taps'
   | 'reach'
   | 'replies'
-  | 'saved'
+  | 'saves'
   | 'shares'
   | 'total_interactions'
   | 'views';
@@ -182,8 +182,12 @@ export type MediaMetric =
   | 'profile_activity'
   | 'navigation'
   | 'replies'
-  | 'avg_time_watched'
-  | 'total_time_watched';
+  | 'ig_reels_avg_watch_time'
+  | 'ig_reels_video_view_total_time'
+  | 'clips_replays_count'
+  | 'reels_skip_rate'
+  | 'crossposted_views'
+  | 'link_clicks';
 
 // Period types
 export type Period = 'day' | 'week' | 'days_28' | 'lifetime';

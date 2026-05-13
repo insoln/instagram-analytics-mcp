@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: meta-mcp
+  namespace: meta-mcp
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: social-mcp.dev.crrm.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: meta-mcp
+                port:
+                  number: 3000
+  tls:
+    - hosts:
+        - social-mcp.dev.crrm.io
+      secretName: crrm-io-tls

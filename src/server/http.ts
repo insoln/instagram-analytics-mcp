@@ -335,10 +335,69 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     app.delete('/mcp', staticMiddleware, handleMcp);
   }
 
+  app.get('/privacy', (_req: Request, res: Response) => {
+    const serverName = serverUrl ?? `http://localhost:${cfg.port}`;
+    res.type('html').send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Privacy Policy — Social Analytics MCP</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:720px;margin:48px auto;padding:0 24px;color:#1a1a1a;line-height:1.6}
+  h1{font-size:1.6rem;margin-bottom:.25em}
+  h2{font-size:1.1rem;margin-top:2em}
+  p,li{font-size:.97rem}
+  a{color:#0066cc}
+  footer{margin-top:3em;font-size:.85rem;color:#666}
+</style>
+</head>
+<body>
+<h1>Privacy Policy</h1>
+<p><strong>Social Analytics MCP Server</strong> — last updated May 2026.</p>
+
+<h2>What this app does</h2>
+<p>This application connects to the Meta Graph API on your behalf to retrieve Instagram and Facebook analytics (reach, engagement, audience demographics, post insights). It acts as an MCP (Model Context Protocol) server that exposes these analytics to AI assistants such as Claude.</p>
+
+<h2>Data we access</h2>
+<ul>
+  <li>Your Meta user ID and the pages/Instagram accounts you grant access to.</li>
+  <li>Instagram and Facebook Page insights and post metadata returned by the Graph API.</li>
+</ul>
+
+<h2>Data we store</h2>
+<ul>
+  <li>Your Meta access token is stored server-side only while your session is active (up to 60 days), encrypted at rest with AES-256-GCM.</li>
+  <li>We do not store post content, messages, or any personal data of your followers.</li>
+  <li>Sessions are deleted when they expire or when you revoke access.</li>
+</ul>
+
+<h2>Data we share</h2>
+<p>We do not sell, share, or disclose your data to third parties. Analytics data is returned only to the authenticated session that requested it.</p>
+
+<h2>Revoking access</h2>
+<p>You can revoke this application's access at any time via <a href="https://www.facebook.com/settings?tab=business_tools" target="_blank" rel="noopener">Facebook Settings → Apps and Websites</a>. Revoking access invalidates your token and removes the stored session.</p>
+
+<h2>Contact</h2>
+<p>Questions or requests: please open an issue on the <a href="https://github.com/insoln/instagram-analytics-mcp" target="_blank" rel="noopener">project repository</a>.</p>
+
+<footer>Hosted at <a href="${serverName}">${serverName}</a></footer>
+</body>
+</html>`);
+  });
+
   let isShuttingDown = false;
   app.get('/healthz', (_req: Request, res: Response) => res.json({ status: 'ok' }));
-  app.get('/readyz', (_req: Request, res: Response) => {
+  app.get('/readyz', async (_req: Request, res: Response) => {
     if (isShuttingDown) { res.status(503).json({ status: 'shutting_down' }); return; }
+    if (store.ping) {
+      try {
+        await store.ping();
+      } catch {
+        res.status(503).json({ status: 'store_unavailable' });
+        return;
+      }
+    }
     res.json({ status: 'ok' });
   });
 
@@ -355,7 +414,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     });
   });
 
-  function shutdown(): Promise<void> {
+  async function shutdown(): Promise<void> {
     isShuttingDown = true;
     logger.info('Shutting down HTTP server...');
     clearInterval(sessionSweepTimer);
@@ -368,7 +427,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
     // while immediately releasing idle sockets that would otherwise hold the
     // process alive until the 10 s force-timeout fires.
     httpServer.closeIdleConnections?.();
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const forceTimeout = setTimeout(() => reject(new Error('Server shutdown timed out after 10s')), 10_000);
       httpServer.close((err) => {
         clearTimeout(forceTimeout);
@@ -376,6 +435,7 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
         else { logger.info('HTTP server closed'); resolve(); }
       });
     });
+    await store.close?.();
   }
 
   return shutdown;

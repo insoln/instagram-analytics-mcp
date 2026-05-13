@@ -44,6 +44,15 @@ const ConfigSchema = z
     jwtExpiry: z.string().regex(/^\d+[smhd]$/, 'JWT_EXPIRY must be a number followed by s, m, h, or d (e.g. "1h", "30m")').default('1h'),
     refreshTokenExpirySeconds: z.coerce.number().int().positive().default(2592000), // 30 days
 
+    // Session store — memory (default) or redis
+    sessionStore: z.enum(['memory', 'redis']).default('memory'),
+    redisUrl: z.string().default('redis://localhost:6379'),
+    // 32-byte AES-256-GCM key as 64 lowercase hex chars.
+    // Required when sessionStore=redis so Meta tokens are never stored in plaintext.
+    tokenEncryptionKey: z.string()
+      .regex(/^[0-9a-fA-F]{64}$/, 'TOKEN_ENCRYPTION_KEY must be a 64-character hex string (32 bytes)')
+      .optional(),
+
   })
   .superRefine((data, ctx) => {
     // http-static: SERVER_URL is optional. When omitted the server falls back to
@@ -71,6 +80,13 @@ const ConfigSchema = z
         });
       }
     }
+    if (data.sessionStore === 'redis' && !data.tokenEncryptionKey) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'TOKEN_ENCRYPTION_KEY is required when SESSION_STORE=redis. Generate with: openssl rand -hex 32',
+        path: ['tokenEncryptionKey'],
+      });
+    }
   });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -94,6 +110,9 @@ function load(): Config {
     jwtPrivateKeyJwk: process.env.JWT_PRIVATE_KEY_JWK,
     jwtExpiry: process.env.JWT_EXPIRY,
     refreshTokenExpirySeconds: process.env.REFRESH_TOKEN_EXPIRY_SECONDS,
+    sessionStore: process.env.SESSION_STORE,
+    redisUrl: process.env.REDIS_URL,
+    tokenEncryptionKey: process.env.TOKEN_ENCRYPTION_KEY,
   };
 
   const cleaned = Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== undefined && v !== ''));
@@ -106,8 +125,9 @@ function load(): Config {
   // that an explicitly configured SERVER_URL is used for allowedHosts validation.
   const OAUTH_ONLY_KEYS = ['metaAppId', 'metaAppSecret', 'metaCallbackPath',
     'jwtPrivateKeyJwk', 'jwtExpiry', 'refreshTokenExpirySeconds'];
+  const REDIS_KEYS = ['sessionStore', 'redisUrl', 'tokenEncryptionKey'];
   if (mode === 'stdio-static') {
-    for (const key of ['port', 'host', 'staticToken', 'serverUrl', ...OAUTH_ONLY_KEYS]) delete cleaned[key];
+    for (const key of ['port', 'host', 'staticToken', 'serverUrl', ...OAUTH_ONLY_KEYS, ...REDIS_KEYS]) delete cleaned[key];
   } else if (mode === 'http-static') {
     for (const key of OAUTH_ONLY_KEYS) delete cleaned[key];
   }

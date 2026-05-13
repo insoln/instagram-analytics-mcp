@@ -5,6 +5,8 @@
 import { InstagramClient } from './platforms/instagram/client.js';
 import { FacebookClient } from './platforms/facebook/client.js';
 
+const DEMOGRAPHIC_METRICS = ['engaged_audience_demographics', 'follower_demographics'];
+
 export async function handleInstagramTool(
   toolName: string,
   args: Record<string, unknown>,
@@ -33,14 +35,27 @@ export async function handleInstagramTool(
       const timeframe = args.timeframe as string | undefined;
       const breakdown = args.breakdown as string | undefined;
 
-      return await client.getAccountInsights(metrics as any[], period as any, {
-        accountId,
-        metricType,
-        since,
-        until,
-        timeframe: timeframe as any,
-        breakdown: breakdown as any,
-      });
+      try {
+        return await client.getAccountInsights(metrics as any[], period as any, {
+          accountId,
+          metricType,
+          since,
+          until,
+          timeframe: timeframe as any,
+          breakdown: breakdown as any,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Meta error 100: period/metric incompatibility — surface actionable hint
+        if (msg.includes('incompatible') && msg.includes('period')) {
+          const hasDemographic = metrics.some((m) => DEMOGRAPHIC_METRICS.includes(m));
+          const hint = hasDemographic
+            ? 'Demographic metrics (engaged_audience_demographics, follower_demographics) require period: "lifetime".'
+            : 'Try period: "day" — it is compatible with all non-demographic metrics. "days_28" is incompatible with reach and several others.';
+          throw new Error(`${msg}\n\nHint: ${hint}`, { cause: err });
+        }
+        throw err;
+      }
     }
 
     case 'instagram_list_media': {

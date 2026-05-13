@@ -1,0 +1,21 @@
+# Optional — not included in kustomization.yaml by default.
+# Uncomment the hpa.yaml entry in kustomization.yaml to enable autoscaling.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: meta-mcp
+  namespace: meta-mcp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: meta-mcp
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

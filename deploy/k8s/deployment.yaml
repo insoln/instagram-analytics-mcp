@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meta-mcp
+  namespace: meta-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: meta-mcp
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: meta-mcp
+    spec:
+      serviceAccountName: meta-mcp
+      imagePullSecrets:
+        - name: image-pull-secret
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: meta-mcp
+          # Update the tag on each deploy, e.g. ghcr.io/careerum/meta-mcp:v3.1.0
+          image: ghcr.io/careerum/meta-mcp:v3.1.1
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: meta-mcp
+            - secretRef:
+                name: meta-mcp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3

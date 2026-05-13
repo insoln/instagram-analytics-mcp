@@ -53,7 +53,7 @@ export const INSTAGRAM_TOOLS: Tool[] = [
               'profile_links_taps',
               'reach',
               'replies',
-              'saved',
+              'saves',
               'shares',
               'total_interactions',
               'views',
@@ -69,7 +69,7 @@ export const INSTAGRAM_TOOLS: Tool[] = [
         period: {
           type: 'string',
           enum: ['day', 'week', 'days_28', 'lifetime'],
-          description: 'Time period for insights',
+          description: 'Time period for insights. Use day for most metrics with total_value — days_28/week are incompatible with reach and several other metrics in total_value mode. Use lifetime with demographic metrics (engaged_audience_demographics, follower_demographics).',
         },
         since: {
           type: 'number',
@@ -127,7 +127,7 @@ export const INSTAGRAM_TOOLS: Tool[] = [
   {
     name: 'instagram_get_media_insights',
     description:
-      'Get insights for a specific Instagram media post. Note: Available metrics depend on media type. For Reels/Videos: use views, likes, comments, shares, reach, saved, total_interactions, replies, avg_time_watched, total_time_watched. For Images/Carousels: use likes, comments, reach, saved, shares, total_interactions. Story-specific metrics (replies, navigation) only work on story media.',
+      'Get insights for a specific Instagram media post. Available metrics depend on media type. Images/Carousels: likes, comments, reach, saved, shares, total_interactions. Reels: views, likes, comments, shares, reach, saved, total_interactions, replies, ig_reels_avg_watch_time, ig_reels_video_view_total_time, clips_replays_count, reels_skip_rate, crossposted_views, link_clicks. Stories: replies, navigation, profile_visits, profile_activity.',
     inputSchema: {
       type: 'object',
       required: ['media_id', 'metrics'],
@@ -153,8 +153,12 @@ export const INSTAGRAM_TOOLS: Tool[] = [
               'profile_activity',
               'navigation',
               'replies',
-              'avg_time_watched',
-              'total_time_watched',
+              'ig_reels_avg_watch_time',
+              'ig_reels_video_view_total_time',
+              'clips_replays_count',
+              'reels_skip_rate',
+              'crossposted_views',
+              'link_clicks',
             ],
           },
           description: 'Array of metrics to retrieve. Choose metrics appropriate for the media type.',
@@ -242,7 +246,7 @@ export const INSTAGRAM_TOOLS: Tool[] = [
   },
   {
     name: 'instagram_get_mentioned_media',
-    description: 'Get media where the Instagram account is mentioned or tagged by other users.',
+    description: 'Get media where the Instagram account is mentioned or tagged by other users. Requires instagram_manage_comments permission — returns (#10) permission error without it.',
     inputSchema: {
       type: 'object',
       properties: {
