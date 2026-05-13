@@ -311,16 +311,18 @@ export class FacebookClient {
     }
 
     const apiVersion = this.resolveApiVersion();
-    const accessToken = this.resolveAccessToken();
+    const userToken = this.resolveAccessToken();
 
-    return this.request<PageDetails>({
-      method: 'GET',
-      url: this.buildPath(apiVersion, resolvedPageId),
-      params: {
-        access_token: accessToken,
-        fields: 'id,name,about,category,category_list,fan_count,followers_count,link,website,phone,emails,location,single_line_address,cover,picture',
-      },
-    });
+    return this.withPageToken(resolvedPageId, userToken, apiVersion, (accessToken) =>
+      this.request<PageDetails>({
+        method: 'GET',
+        url: this.buildPath(apiVersion, resolvedPageId),
+        params: {
+          access_token: accessToken,
+          fields: 'id,name,about,category,category_list,fan_count,followers_count,link,website,phone,emails,location,single_line_address,cover,picture',
+        },
+      })
+    );
   }
 
   async getPageFeed(pageId?: string, limit?: number): Promise<PageFeedResponse> {
@@ -330,17 +332,19 @@ export class FacebookClient {
     }
 
     const apiVersion = this.resolveApiVersion();
-    const accessToken = this.resolveAccessToken();
+    const userToken = this.resolveAccessToken();
 
-    return this.request<PageFeedResponse>({
-      method: 'GET',
-      url: this.buildPath(apiVersion, `${resolvedPageId}/feed`),
-      params: {
-        access_token: accessToken,
-        fields: 'id,message,created_time,permalink_url,full_picture,type,shares,reactions.summary(true),comments.summary(true)',
-        limit: String(limit ?? 25),
-      },
-    });
+    return this.withPageToken(resolvedPageId, userToken, apiVersion, (accessToken) =>
+      this.request<PageFeedResponse>({
+        method: 'GET',
+        url: this.buildPath(apiVersion, `${resolvedPageId}/feed`),
+        params: {
+          access_token: accessToken,
+          fields: 'id,message,created_time,permalink_url,full_picture,type,shares,reactions.summary(true),comments.summary(true)',
+          limit: String(limit ?? 25),
+        },
+      })
+    );
   }
 
   listKnownMetrics(): KnownMetricsResponse {
