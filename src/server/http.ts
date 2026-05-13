@@ -1,4 +1,5 @@
 import { randomUUID, timingSafeEqual, createHash } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -36,11 +37,18 @@ import {
 const SESSION_TRANSPORT_MAX = 10_000;
 const SESSION_TRANSPORT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+// Per-request auth propagated via AsyncLocalStorage so concurrent requests on
+// the same session don't share mutable state and cross-contaminate each other's
+// auth info inside the MCP handler.
+const requestAuthStorage = new AsyncLocalStorage<AuthInfo | undefined>();
+
 interface TransportEntry {
   transport: StreamableHTTPServerTransport;
   server: Server;
-  // Mutable holder updated with req.auth before every dispatch so scope
-  // enforcement inside the MCP handler always sees the current token's scopes.
+  // authHolder tracks the session owner for the hijacking check (compares
+  // req.auth.clientId against the session-creation identity). It is updated
+  // after the check so only the verified identity is remembered.
+  // Per-dispatch auth (scopes, resolveContext) is read from requestAuthStorage.
   authHolder: { current: AuthInfo | undefined };
   createdAt: number;
 }
@@ -161,9 +169,9 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       });
 
       try {
-        // Enforce OAuth scopes using authHolder.current — updated from req.auth
-        // before every dispatch, so we always check the presented token's scopes.
-        const authInfo = authHolder.current;
+        // Read auth from AsyncLocalStorage — set per-request in handleMcp so
+        // concurrent requests on the same session use their own auth context.
+        const authInfo = requestAuthStorage.getStore();
         if (cfg.mode === 'http-oauth') {
           // requireBearerAuth guarantees authInfo is set; treat absence as a
           // misconfiguration and fail closed rather than silently skipping checks.
@@ -225,7 +233,8 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
           .json({ error: 'Session does not belong to the authenticated user' });
         return;
       }
-      // Update holder so the MCP handler sees the current request's token scopes.
+      // Update holder so the hijacking check on the next request compares
+      // against the most-recently verified identity for this session.
       entry.authHolder.current = req.auth;
     }
 
@@ -276,7 +285,9 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
 
       entry = { transport, server, authHolder, createdAt: Date.now() };
       await server.connect(transport);
-      await entry.transport.handleRequest(req, res, req.body);
+      await requestAuthStorage.run(req.auth, () =>
+        entry!.transport.handleRequest(req, res, req.body)
+      );
       // If onsessioninitialized never fired (e.g. SDK rejected the initialize
       // body), the transport was never stored in `sessions` and won't be swept.
       if (!sessionRegistered) {
@@ -287,7 +298,9 @@ export async function startHttpServer(cfg: Config, store: SessionStore): Promise
       return;
     }
 
-    await entry!.transport.handleRequest(req, res, req.body);
+    await requestAuthStorage.run(req.auth, () =>
+      entry!.transport.handleRequest(req, res, req.body)
+    );
   }
 
   const resourceMetadataUrl = serverUrl

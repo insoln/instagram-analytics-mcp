@@ -139,6 +139,7 @@ export class MetaOAuthProvider implements OAuthServerProvider {
     const record = await this.store.getMcpCode(authorizationCode);
     if (!record) throw new Error('Authorization code not found or expired');
     if (record.clientId !== client.client_id) throw new Error('Authorization code was not issued to this client');
+    if (Date.now() > record.expiresAt) throw new Error('Authorization code has expired');
     // OAuth 2.1 §4.1.3: redirect_uri is always required when included in the
     // authorization request (McpCodeRecord always stores it), and must match exactly.
     if (!redirectUri || redirectUri !== record.redirectUri) throw new Error('redirect_uri is required and must match the authorization request');
@@ -273,9 +274,15 @@ export class MetaOAuthProvider implements OAuthServerProvider {
       if (stateRecord.clientState) redirectUri.searchParams.set('state', stateRecord.clientState);
       return redirectUri.toString();
     } finally {
-      // Always consume the state — the Meta code is already spent regardless
-      // of whether subsequent operations succeeded.
-      await this.store.deleteOAuthState(state);
+      // Best-effort: delete the state regardless of outcome. The Meta code is
+      // already spent so the state cannot be meaningfully retried either way.
+      // Wrap in try/catch so a transient store error (e.g. network hiccup on
+      // Redis) doesn't override a successfully completed callback with a 500.
+      try {
+        await this.store.deleteOAuthState(state);
+      } catch (err) {
+        logger.warn('Failed to delete OAuth state after callback; it will expire at TTL', { error: String(err) });
+      }
     }
   }
 
